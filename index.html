@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Source BibTeX Enricher (Safe Proxies)</title>
+    <title>Multi-Source BibTeX Enricher (Local Server Ready)</title>
     <style>
         :root {
             --bg-color: #f4f4f9;
@@ -43,10 +43,11 @@
             align-items: center;
         }
 
-        h1 { margin: 0; }
-        p.subtitle { margin-bottom: 2rem; color: #888; }
+        h1 { margin: 0; font-size: 1.8rem;}
+        p.subtitle { margin-bottom: 1.5rem; color: #888; }
         
-        .theme-toggle-btn {
+        .top-btns { display: flex; gap: 0.5rem; }
+        .icon-btn {
             background: none;
             border: 1px solid var(--border-color);
             color: var(--text-color);
@@ -56,6 +57,22 @@
             font-size: 0.9rem;
         }
 
+        .settings-panel {
+            display: none;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+        .settings-panel label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem;}
+        .settings-panel input { 
+            width: 100%; padding: 0.5rem; margin-bottom: 1rem; 
+            border: 1px solid var(--border-color); border-radius: 4px;
+            background: var(--textarea-bg); color: var(--text-color);
+        }
+        .settings-note { font-size: 0.8rem; color: #666; margin-top: -0.5rem; margin-bottom: 1rem; display: block;}
+
         .input-section {
             display: flex;
             flex-direction: column;
@@ -64,68 +81,45 @@
         }
 
         textarea {
-            width: 100%;
-            height: 150px;
-            padding: 0.75rem;
-            font-family: monospace;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            resize: vertical;
-            box-sizing: border-box;
-            background-color: var(--textarea-bg);
-            color: var(--text-color);
+            width: 100%; height: 150px; padding: 0.75rem;
+            font-family: monospace; border: 1px solid var(--border-color);
+            border-radius: 4px; resize: vertical; box-sizing: border-box;
+            background-color: var(--textarea-bg); color: var(--text-color);
         }
 
         .primary-btn {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 0.75rem;
-            font-size: 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
+            background-color: var(--primary-color); color: white;
+            border: none; padding: 0.75rem; font-size: 1rem;
+            border-radius: 4px; cursor: pointer; font-weight: bold;
         }
         .primary-btn:hover { opacity: 0.9; }
         .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem;}
+        #file-warning { color: var(--error-color); text-align: center; font-weight: bold; margin-bottom: 1rem; display: none; background: rgba(255,0,0,0.1); padding: 1rem; border-radius: 8px;}
+        
         #error-log { 
-            color: var(--error-color); 
-            font-size: 0.85rem; 
-            text-align: left; 
-            background: rgba(255, 0, 0, 0.05);
-            padding: 0.5rem;
-            border-radius: 4px;
-            display: none;
-            font-family: monospace;
-            white-space: pre-wrap;
+            color: var(--error-color); font-size: 0.85rem; text-align: left; 
+            background: rgba(255, 0, 0, 0.05); padding: 0.5rem;
+            border-radius: 4px; display: none; font-family: monospace;
+            white-space: pre-wrap; word-break: break-all;
         }
         
         .results-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 1.5rem;
-            margin-top: 1rem;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem; margin-top: 1rem;
         }
         .result-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 1rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.5rem;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;
         }
-        .result-header h3 { margin: 0; color: var(--primary-color); }
-        .confidence { font-size: 0.85rem; color: #4caf50; background: var(--success-bg); padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: bold;}
-        .result-card textarea { height: 250px; }
+        .result-header h3 { margin: 0; color: var(--primary-color); font-size: 1.1rem; }
+        .confidence { font-size: 0.8rem; color: #4caf50; background: var(--success-bg); padding: 0.2rem 0.5rem; border-radius: 12px; font-weight: bold;}
+        .result-card textarea { height: 250px; font-size: 0.85rem;}
     </style>
 
     <script src="https://cdn.jsdelivr.net/gh/ORCID/bibtexParseJs@master/bibtexParse.js"></script>
@@ -135,22 +129,44 @@
 
     <div class="header-container">
         <h1>📚 Multi-Source BibTeX Enricher</h1>
-        <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark Mode</button>
+        <div class="top-btns">
+            <button class="icon-btn" onclick="toggleSettings()">⚙️ Settings</button>
+            <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()">🌙 Dark</button>
+        </div>
     </div>
-    <p class="subtitle">Equipped with resilient CORS proxies and safe JSON parsing.</p>
+    <p class="subtitle">Extracts deep API errors if proxies are blocked by Cloudflare or WAFs.</p>
     
+    <div id="file-warning">
+        ⚠️ Warning: You are running this via a file:/// URL. Your browser will strictly block all API connections. Please run this using a local server (e.g., Python http.server or VS Code Live Server).
+    </div>
+
+    <div id="settings-panel" class="settings-panel">
+        <label>Custom CORS Proxy URL (Optional)</label>
+        <span class="settings-note">Leave empty to use built-in fallbacks. Useful if public proxies are blocked. (e.g., https://corsproxy.io/?)</span>
+        <input type="text" id="setting-proxy" placeholder="https://your-proxy.com/?url=">
+        
+        <label>Unpaywall Email (Required for Unpaywall)</label>
+        <input type="email" id="setting-email" placeholder="you@example.com">
+        
+        <label>Elsevier Scopus API Key (Required for Scopus)</label>
+        <input type="text" id="setting-scopus" placeholder="Paste Scopus API Key here...">
+    </div>
+
     <div class="input-section">
-        <label for="input-bib"><strong>Paste Input:</strong></label>
-        <textarea id="input-bib" placeholder="e.g. @article{...} &#10;OR&#10;PointNeXt: Revisiting PointNet++..."></textarea>
+        <textarea id="input-bib" placeholder="Paste BibTeX or paper title..."></textarea>
         <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">Search & Enrich</button>
     </div>
     
     <div id="status-msg"></div>
     <div id="error-log"></div>
-
     <div id="results-container" class="results-grid"></div>
 
     <script>
+        // Check for local file execution and display warning
+        if (window.location.protocol === 'file:') {
+            document.getElementById('file-warning').style.display = 'block';
+        }
+
         const FUZZY_THRESHOLD = 0.70;
         let activeErrors = [];
 
@@ -158,70 +174,68 @@
             const html = document.documentElement;
             const btn = document.getElementById('theme-toggle');
             if (html.getAttribute('data-theme') === 'dark') {
-                html.removeAttribute('data-theme');
-                btn.textContent = '🌙 Dark Mode';
+                html.removeAttribute('data-theme'); btn.textContent = '🌙 Dark';
             } else {
-                html.setAttribute('data-theme', 'dark');
-                btn.textContent = '☀️ Light Mode';
+                html.setAttribute('data-theme', 'dark'); btn.textContent = '☀️ Light';
             }
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
         }
 
         function logError(source, detailedMsg) {
-            activeErrors.push(`[${source}] Failed: ${detailedMsg}`);
+            activeErrors.push(`[${source}] Failed. Trace:\n${detailedMsg}`);
             const el = document.getElementById('error-log');
             el.style.display = 'block';
-            el.innerHTML = activeErrors.join('<br><br>');
+            el.innerHTML = activeErrors.join('\n\n');
         }
 
-        // --- NEW FORTIFIED FETCH WRAPPER ---
         async function fetchWithFallback(url) {
             let trace = [];
+            const customProxy = document.getElementById('setting-proxy').value.trim();
             
-            // Ordered list of proxy routes to attempt
-            const proxies = [
-                { name: "Direct", prefix: "" },
-                { name: "Codetabs", prefix: "https://api.codetabs.com/v1/proxy?quest=" },
-                { name: "ThingProxy", prefix: "https://thingproxy.freeboard.io/fetch/" },
-                { name: "AllOrigins", prefix: "https://api.allorigins.win/raw?url=" }
-            ];
+            let proxies = customProxy 
+                ? [{ name: "Custom Proxy", prefix: customProxy }]
+                : [
+                    { name: "Direct", prefix: "" },
+                    { name: "AllOrigins Get", prefix: "https://api.allorigins.win/get?url=" },
+                    { name: "Codetabs", prefix: "https://api.codetabs.com/v1/proxy?quest=" }
+                ];
 
             for (const proxy of proxies) {
                 const targetUrl = proxy.prefix ? proxy.prefix + encodeURIComponent(url) : url;
-
                 try {
                     const res = await fetch(targetUrl);
-                    
                     if (res.ok) {
-                        // 1. Download as raw text first
                         const rawText = await res.text();
                         
-                        // 2. Safely attempt to parse JSON
-                        try {
-                            const jsonData = JSON.parse(rawText);
-                            return jsonData; // Success! Return the data.
-                        } catch (parseError) {
-                            // If it's HTML (Cloudflare block), log it and move to the next proxy
-                            trace.push(`${proxy.name}: Returned non-JSON (likely HTML block).`);
-                            continue; 
+                        let contentToParse = rawText;
+                        if (proxy.name === "AllOrigins Get") {
+                            try {
+                                const wrapper = JSON.parse(rawText);
+                                contentToParse = wrapper.contents;
+                            } catch(e) { /* ignore */ }
                         }
+
+                        if (contentToParse.trim().startsWith('<') && !url.includes('arxiv.org')) {
+                            const snippet = contentToParse.substring(0, 80).replace(/\n/g, ' ');
+                            trace.push(` - ${proxy.name}: WAF Blocked (Returned HTML: ${snippet}...)`);
+                            continue;
+                        }
+                        return contentToParse; 
                     }
-                    
                     if (res.status === 429) throw new Error("429 Rate Limited");
-                    trace.push(`${proxy.name}: HTTP ${res.status}`);
-                    
+                    if (res.status === 401) throw new Error("401 Unauthorized");
+                    trace.push(` - ${proxy.name}: HTTP ${res.status}`);
                 } catch (e) {
-                    if (e.message.includes("429")) throw e; // Stop trying if we are genuinely rate limited
-                    
-                    // Simplify the error message for cleaner logs
-                    let msg = e.message;
-                    if (msg.includes("NetworkError") || msg.includes("Failed to fetch")) {
-                        msg = "Browser CORS/Network Block";
-                    }
-                    trace.push(`${proxy.name}: ${msg}`);
+                    if (e.message.includes("429") || e.message.includes("401")) throw e;
+                    let msg = e.message.includes("NetworkError") || e.message.includes("Failed to fetch") ? "CORS Blocked" : e.message;
+                    trace.push(` - ${proxy.name}: ${msg}`);
                 }
             }
-
-            throw new Error(`All network attempts failed.\nTrace:\n - ${trace.join('\n - ')}`);
+            throw new Error(trace.join('\n'));
         }
 
         async function runEnrichment() {
@@ -232,22 +246,15 @@
             const btn = document.getElementById('enrich-btn');
 
             resultsContainer.innerHTML = ''; 
-            errorEl.style.display = 'none';
-            errorEl.innerHTML = '';
-            activeErrors = [];
+            errorEl.style.display = 'none'; errorEl.innerHTML = ''; activeErrors = [];
             
-            if (!input.trim()) {
-                alert("Please paste some text first.");
-                return;
-            }
+            if (!input.trim()) return alert("Please paste some text first.");
 
             try {
                 btn.disabled = true;
                 statusEl.textContent = "Analyzing input format...";
 
-                let originalTitle = "";
-                let originalAuthor = "";
-
+                let originalTitle = ""; let originalAuthor = "";
                 try {
                     const parsed = bibtexParse.toJSON(input);
                     if (parsed && parsed.length > 0 && parsed[0].entryTags && parsed[0].entryTags.title) {
@@ -258,36 +265,34 @@
 
                 if (!originalTitle) {
                     const lines = input.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-                    if (lines.length === 0) throw new Error("Input is empty or invalid.");
-                    
-                    originalTitle = lines[0];
-                    originalAuthor = lines.length > 1 ? lines[1] : ""; 
+                    if (lines.length === 0) throw new Error("Input is empty.");
+                    originalTitle = lines[0]; originalAuthor = lines.length > 1 ? lines[1] : ""; 
                 }
 
                 const braceFreeTitle = originalTitle.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
                 const braceFreeAuthor = originalAuthor.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
 
-                statusEl.textContent = `Searching APIs for: "${braceFreeTitle.substring(0, 50)}..."`;
+                statusEl.textContent = `Searching APIs for: "${braceFreeTitle.substring(0, 40)}..."`;
 
                 const promises = [
                     fetchDBLP(braceFreeTitle, originalTitle, originalAuthor),
                     fetchOpenAlex(braceFreeTitle, originalTitle, originalAuthor),
                     fetchCrossRef(braceFreeTitle, braceFreeAuthor, originalTitle, originalAuthor),
-                    fetchSemanticScholar(braceFreeTitle, originalTitle, originalAuthor)
+                    fetchSemanticScholar(braceFreeTitle, originalTitle, originalAuthor),
+                    fetchArxiv(braceFreeTitle, originalTitle, originalAuthor),
+                    fetchUnpaywall(braceFreeTitle, originalTitle, originalAuthor),
+                    fetchScopus(braceFreeTitle, originalTitle, originalAuthor)
                 ];
 
                 const results = await Promise.allSettled(promises);
-                
                 let foundAny = false;
                 results.forEach(result => {
                     if (result.status === 'fulfilled' && result.value) {
-                        renderResultCard(result.value);
-                        foundAny = true;
+                        renderResultCard(result.value); foundAny = true;
                     }
                 });
 
-                statusEl.textContent = foundAny ? "Search complete!" : "Search finished. See error logs below if results are missing.";
-
+                statusEl.textContent = foundAny ? "Search complete!" : "Search finished. See error logs below.";
             } catch (err) {
                 statusEl.textContent = `Error: ${err.message}`;
             } finally {
@@ -295,237 +300,179 @@
             }
         }
 
-        // --- Processing & Evaluation Functions ---
-
-        function cleanString(str) {
-            if (!str) return "";
-            return str.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').replace(/[.,:;'"-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-        }
-
+        // --- Data Helpers ---
+        function cleanString(str) { return str ? str.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').replace(/[.,:;'"-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase() : ""; }
+        
         function getFirstAuthorLastName(authorStr) {
             if (!authorStr) return "";
             let firstAuthor = authorStr.split(/\band\b/i)[0].trim();
-            if (firstAuthor.includes(',')) {
-                return firstAuthor.split(',')[0].trim().toLowerCase();
-            } else {
-                let parts = firstAuthor.split(/\s+/);
-                return parts[parts.length - 1].trim().toLowerCase();
-            }
+            if (firstAuthor.includes(',')) return firstAuthor.split(',')[0].trim().toLowerCase();
+            let parts = firstAuthor.split(/\s+/); return parts[parts.length - 1].trim().toLowerCase();
         }
 
         function generateCitationKey(apiAuthor, apiYear) {
             let lastName = "paper";
             if (apiAuthor) {
                 let firstAuthor = apiAuthor.split(/\band\b/i)[0].trim();
-                if (firstAuthor.includes(',')) {
-                    lastName = firstAuthor.split(',')[0].trim();
-                } else {
-                    let parts = firstAuthor.split(/\s+/);
-                    lastName = parts[parts.length - 1].trim();
-                }
+                lastName = firstAuthor.includes(',') ? firstAuthor.split(',')[0].trim() : firstAuthor.split(/\s+/).pop().trim();
                 lastName = lastName.replace(/[^a-zA-Z]/g, '').toLowerCase(); 
             }
             return lastName + (apiYear || "");
         }
 
         function evaluateMatch(originalTitle, originalAuthor, foundTitleRaw, foundAuthorRaw, foundVenue) {
-            const foundTitle = cleanString(foundTitleRaw);
-            const foundAuthor = cleanString(foundAuthorRaw);
-            const origTitle = cleanString(originalTitle);
-            const origAuthor = cleanString(originalAuthor);
-
+            const foundTitle = cleanString(foundTitleRaw); const foundAuthor = cleanString(foundAuthorRaw);
+            const origTitle = cleanString(originalTitle); const origAuthor = cleanString(originalAuthor);
             if (!foundTitle || !origTitle) return null;
             
             const titleSim = stringSimilarity.compareTwoStrings(origTitle, foundTitle);
-            let authorSim = 1.0; 
-            
-            if (origAuthor && foundAuthor) {
-                authorSim = stringSimilarity.compareTwoStrings(origAuthor, foundAuthor);
-            }
-
+            const authorSim = (origAuthor && foundAuthor) ? stringSimilarity.compareTwoStrings(origAuthor, foundAuthor) : 1.0; 
             const score = (titleSim * 0.8) + (authorSim * 0.2);
             
-            if (score >= FUZZY_THRESHOLD && foundVenue) {
-                return { confidence: Math.round(score * 100) };
-            }
+            if (score >= FUZZY_THRESHOLD && foundVenue) return { confidence: Math.round(score * 100) };
             return null;
         }
 
         function createEnrichedBibtex(updates) {
-            const citationKey = generateCitationKey(updates.author, updates.year);
-            const newEntry = { citationKey: citationKey, entryType: 'misc', entryTags: {} };
-
+            const newEntry = { citationKey: generateCitationKey(updates.author, updates.year), entryType: 'misc', entryTags: {} };
             if (updates.title) newEntry.entryTags.title = `{${updates.title}}`;
             if (updates.author) newEntry.entryTags.author = `{${updates.author}}`;
 
             if (updates.venue) {
-                const venueStr = updates.venue;
-                if (venueStr.toLowerCase().includes('journal') || venueStr.toLowerCase().includes('transactions') || venueStr.toLowerCase().includes('arxiv')) {
-                    newEntry.entryType = 'article';
-                    newEntry.entryTags.journal = `{${venueStr}}`;
+                const v = updates.venue.toLowerCase();
+                if (v.includes('journal') || v.includes('transactions') || v.includes('arxiv')) {
+                    newEntry.entryType = 'article'; newEntry.entryTags.journal = `{${updates.venue}}`;
                 } else {
-                    newEntry.entryType = 'inproceedings';
-                    newEntry.entryTags.booktitle = `{${venueStr}}`;
+                    newEntry.entryType = 'inproceedings'; newEntry.entryTags.booktitle = `{${updates.venue}}`;
                 }
             }
 
             const mapFields = ['doi', 'year', 'publisher', 'volume', 'number', 'pages', 'url', 'abstract', 'note'];
-            mapFields.forEach(field => {
-                if (updates[field]) newEntry.entryTags[field] = `{${updates[field]}}`;
-            });
-            
+            mapFields.forEach(f => { if (updates[f]) newEntry.entryTags[f] = `{${updates[f]}}`; });
             return bibtexParse.toBibtex([newEntry], false);
         }
 
         function renderResultCard(data) {
             const container = document.getElementById('results-container');
-            const card = document.createElement('div');
-            card.className = 'result-card';
-            card.innerHTML = `
-                <div class="result-header">
-                    <h3>${data.source}</h3>
-                    <span class="confidence">${data.confidence}% Match</span>
-                </div>
-                <textarea readonly>${data.bibtex}</textarea>
-            `;
+            const card = document.createElement('div'); card.className = 'result-card';
+            card.innerHTML = `<div class="result-header"><h3>${data.source}</h3><span class="confidence">${data.confidence}%</span></div><textarea readonly>${data.bibtex}</textarea>`;
             container.appendChild(card);
         }
 
-        // --- Target API Handlers ---
+        // --- FETCHERS ---
 
-        async function fetchDBLP(queryTitle, originalTitle, originalAuthor) {
+        async function fetchDBLP(qTitle, origTitle, origAuthor) {
             try {
-                const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(queryTitle)}&format=json&h=1`;
-                const data = await fetchWithFallback(url);
-                
-                const hit = data?.result?.hits?.hit?.[0]?.info;
+                const raw = await fetchWithFallback(`https://dblp.org/search/publ/api?q=${encodeURIComponent(qTitle)}&format=json&h=1`);
+                const hit = JSON.parse(raw)?.result?.hits?.hit?.[0]?.info;
                 if (!hit) return null;
-
-                let fullAuthorList = "";
-                if (hit.authors?.author) {
-                    const authorsArr = Array.isArray(hit.authors.author) ? hit.authors.author : [hit.authors.author];
-                    fullAuthorList = authorsArr.map(a => a.text).join(" and ");
-                }
-                const firstAuthor = fullAuthorList.split(" and ")[0];
-                let foundVenue = Array.isArray(hit.venue) ? hit.venue[0] : hit.venue;
-
-                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
-                if (match) {
-                    return {
-                        source: "DBLP",
-                        confidence: match.confidence,
-                        bibtex: createEnrichedBibtex({ 
-                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
-                            doi: hit.doi, year: hit.year, pages: hit.pages, volume: hit.volume, 
-                            number: hit.number, publisher: hit.publisher, url: hit.ee || hit.url
-                        })
-                    };
-                }
-            } catch (e) {
-                logError("DBLP", e.message);
-            } 
-            return null;
+                const authorList = Array.isArray(hit.authors?.author) ? hit.authors.author.map(a=>a.text).join(" and ") : hit.authors?.author?.text;
+                const venue = Array.isArray(hit.venue) ? hit.venue[0] : hit.venue;
+                const match = evaluateMatch(origTitle, origAuthor, hit.title, authorList?.split(" and ")[0], venue);
+                if (match) return { source: "DBLP", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.doi, year: hit.year, pages: hit.pages, url: hit.ee }) };
+            } catch (e) { logError("DBLP", e.message); } return null;
         }
 
-        async function fetchOpenAlex(queryTitle, originalTitle, originalAuthor) {
+        async function fetchOpenAlex(qTitle, origTitle, origAuthor) {
             try {
-                const url = `https://api.openalex.org/works?filter=title.search:${encodeURIComponent(queryTitle)}&per-page=1`;
-                const data = await fetchWithFallback(url);
-                
-                const hit = data?.results?.[0];
+                const raw = await fetchWithFallback(`https://api.openalex.org/works?filter=title.search:${encodeURIComponent(qTitle)}&per-page=1`);
+                const hit = JSON.parse(raw)?.results?.[0];
                 if (!hit) return null;
-
-                const fullAuthorList = (hit.authorships || []).map(a => a.author.display_name).join(" and ");
-                const firstAuthor = fullAuthorList.split(" and ")[0];
-                const foundVenue = hit.primary_location?.source?.display_name;
+                const authorList = (hit.authorships || []).map(a => a.author.display_name).join(" and ");
+                const venue = hit.primary_location?.source?.display_name;
                 const pages = (hit.biblio?.first_page && hit.biblio?.last_page) ? `${hit.biblio.first_page}--${hit.biblio.last_page}` : null;
-
-                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
-                if (match) {
-                    return {
-                        source: "OpenAlex",
-                        confidence: match.confidence,
-                        bibtex: createEnrichedBibtex({ 
-                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
-                            doi: hit.doi ? hit.doi.replace('https://doi.org/', '') : null, 
-                            year: hit.publication_year, volume: hit.biblio?.volume, number: hit.biblio?.issue, 
-                            pages: pages, publisher: hit.primary_location?.source?.host_organization_name, 
-                            url: hit.id, note: hit.cited_by_count ? `Cited by: ${hit.cited_by_count}` : null
-                        })
-                    };
-                }
-            } catch (e) {
-                logError("OpenAlex", e.message);
-            } 
-            return null;
+                const match = evaluateMatch(origTitle, origAuthor, hit.title, authorList?.split(" and ")[0], venue);
+                if (match) return { source: "OpenAlex", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.doi?.replace('https://doi.org/', ''), year: hit.publication_year, pages, url: hit.id }) };
+            } catch (e) { logError("OpenAlex", e.message); } return null;
         }
 
-        async function fetchCrossRef(queryTitle, queryAuthor, originalTitle, originalAuthor) {
+        async function fetchCrossRef(qTitle, qAuthor, origTitle, origAuthor) {
             try {
-                const authorLastName = getFirstAuthorLastName(queryAuthor);
-                let url = `https://api.crossref.org/works?query.title=${encodeURIComponent(queryTitle)}&select=title,author,container-title,DOI,issued,publisher,volume,issue,page,URL,abstract&rows=1`;
-                if (authorLastName) url += `&query.author=${encodeURIComponent(authorLastName)}`;
-                
-                const data = await fetchWithFallback(url);
-                
-                const hit = data?.message?.items?.[0];
+                const aName = getFirstAuthorLastName(qAuthor);
+                const raw = await fetchWithFallback(`https://api.crossref.org/works?query.title=${encodeURIComponent(qTitle)}&select=title,author,container-title,DOI,issued,publisher,URL,abstract&rows=1${aName ? `&query.author=${encodeURIComponent(aName)}`:''}`);
+                const hit = JSON.parse(raw)?.message?.items?.[0];
                 if (!hit) return null;
-
-                const hitTitle = hit.title?.[0];
-                const fullAuthorList = (hit.author || []).map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(" and ");
-                const firstAuthor = fullAuthorList.split(" and ")[0];
-                const foundVenue = hit['container-title']?.[0];
-                
-                let abstract = hit.abstract || null;
-                if (abstract) abstract = abstract.replace(/<[^>]*>?/gm, '').trim(); 
-
-                const match = evaluateMatch(originalTitle, originalAuthor, hitTitle, firstAuthor, foundVenue);
-                if (match) {
-                    return {
-                        source: "CrossRef",
-                        confidence: match.confidence,
-                        bibtex: createEnrichedBibtex({ 
-                            title: hitTitle, author: fullAuthorList, venue: foundVenue, 
-                            doi: hit.DOI, year: hit.issued?.['date-parts']?.[0]?.[0], publisher: hit.publisher, 
-                            volume: hit.volume, number: hit.issue, pages: hit.page, url: hit.URL, abstract: abstract
-                        })
-                    };
-                }
-            } catch (e) {
-                logError("CrossRef", e.message);
-            } 
-            return null;
+                const authorList = (hit.author || []).map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(" and ");
+                const venue = hit['container-title']?.[0];
+                const match = evaluateMatch(origTitle, origAuthor, hit.title?.[0], authorList?.split(" and ")[0], venue);
+                if (match) return { source: "CrossRef", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title?.[0], author: authorList, venue, doi: hit.DOI, year: hit.issued?.['date-parts']?.[0]?.[0], publisher: hit.publisher, url: hit.URL, abstract: hit.abstract?.replace(/<[^>]*>?/gm, '') }) };
+            } catch (e) { logError("CrossRef", e.message); } return null;
         }
 
-        async function fetchSemanticScholar(queryTitle, originalTitle, originalAuthor) {
+        async function fetchSemanticScholar(qTitle, origTitle, origAuthor) {
             try {
-                const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(queryTitle)}&fields=title,authors,venue,year,externalIds,abstract,url,citationCount,isOpenAccess,pages,volume,journal&limit=1`;
-                const data = await fetchWithFallback(url);
-                
-                const hit = data?.data?.[0];
+                const safeQ = qTitle.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0,10).join(' ');
+                const raw = await fetchWithFallback(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(safeQ)}&fields=title,authors,venue,year,externalIds,abstract,url,citationCount,isOpenAccess,pages,journal&limit=1`);
+                const hit = JSON.parse(raw)?.data?.[0];
+                if (!hit) return null;
+                const authorList = (hit.authors || []).map(a => a.name).join(" and ");
+                const venue = hit.journal?.name || hit.venue;
+                const match = evaluateMatch(origTitle, origAuthor, hit.title, authorList?.split(" and ")[0], venue);
+                if (match) return { source: "Semantic Scholar", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.externalIds?.DOI, year: hit.year, abstract: hit.abstract, url: hit.url, pages: hit.pages, note: `Citations: ${hit.citationCount}` }) };
+            } catch (e) { logError("Semantic Scholar", e.message); } return null;
+        }
+
+        async function fetchArxiv(qTitle, origTitle, origAuthor) {
+            try {
+                const rawXml = await fetchWithFallback(`https://export.arxiv.org/api/query?search_query=ti:"${encodeURIComponent(qTitle)}"&max_results=1`);
+                const xmlDoc = new DOMParser().parseFromString(rawXml, "text/xml");
+                const entry = xmlDoc.getElementsByTagName("entry")[0];
+                if (!entry) return null;
+
+                const title = entry.getElementsByTagName("title")[0]?.textContent.replace(/\n/g, ' ').trim();
+                const authors = Array.from(entry.getElementsByTagName("author")).map(a => a.getElementsByTagName("name")[0].textContent).join(" and ");
+                const published = entry.getElementsByTagName("published")[0]?.textContent;
+                const year = published ? published.split('-')[0] : null;
+                const abstract = entry.getElementsByTagName("summary")[0]?.textContent.replace(/\n/g, ' ').trim();
+                const url = entry.getElementsByTagName("id")[0]?.textContent;
+                const venue = "arXiv preprint arXiv:" + (url ? url.split('/abs/')[1] : "Unknown");
+
+                const match = evaluateMatch(origTitle, origAuthor, title, authors.split(" and ")[0], venue);
+                if (match) return { source: "arXiv API", confidence: match.confidence, bibtex: createEnrichedBibtex({ title, author: authors, venue, year, abstract, url }) };
+            } catch (e) { logError("arXiv", e.message); } return null;
+        }
+
+        async function fetchUnpaywall(qTitle, origTitle, origAuthor) {
+            try {
+                const email = document.getElementById('setting-email').value || "dummy-user@example.com";
+                // FIX 422: Removed explicit quotation marks around the query string
+                const raw = await fetchWithFallback(`https://api.unpaywall.org/v2/search/?query=${encodeURIComponent(qTitle)}&email=${encodeURIComponent(email)}`);
+                const data = JSON.parse(raw);
+                const hit = data.results?.[0]?.response;
                 if (!hit) return null;
 
-                const fullAuthorList = (hit.authors || []).map(a => a.name).join(" and ");
-                const firstAuthor = fullAuthorList.split(" and ")[0];
-                const foundVenue = hit.journal?.name || hit.venue;
+                const title = hit.title;
+                const venue = hit.journal_name;
+                const doi = hit.doi;
+                const year = hit.published_date ? hit.published_date.split('-')[0] : null;
+                const url = hit.best_oa_location?.url_for_pdf || hit.best_oa_location?.url || null;
+                const publisher = hit.publisher;
+                
+                const match = evaluateMatch(origTitle, origAuthor, title, null, venue);
+                if (match) return { source: "Unpaywall", confidence: match.confidence, bibtex: createEnrichedBibtex({ title, author: origAuthor, venue, doi, year, publisher, url, note: "Open Access URL found" }) };
+            } catch (e) { logError("Unpaywall", e.message); } return null;
+        }
 
-                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
-                if (match) {
-                    return {
-                        source: "Semantic Scholar",
-                        confidence: match.confidence,
-                        bibtex: createEnrichedBibtex({ 
-                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
-                            doi: hit.externalIds?.DOI, year: hit.year, abstract: hit.abstract, url: hit.url, 
-                            pages: hit.pages, volume: hit.volume, 
-                            note: `Citations: ${hit.citationCount} | Open Access: ${hit.isOpenAccess}`
-                        })
-                    };
-                }
-            } catch (e) {
-                logError("Semantic Scholar", e.message);
-            } 
-            return null;
+        async function fetchScopus(qTitle, origTitle, origAuthor) {
+            try {
+                const key = document.getElementById('setting-scopus').value;
+                if (!key) { logError("Scopus", "API Key missing. Enter it in Settings."); return null; }
+
+                const raw = await fetchWithFallback(`https://api.elsevier.com/content/search/scopus?query=title(${encodeURIComponent(qTitle)})&apiKey=${encodeURIComponent(key)}`);
+                const hit = JSON.parse(raw)?.['search-results']?.entry?.[0];
+                if (!hit) return null;
+
+                const title = hit['dc:title'];
+                const author = hit['dc:creator'];
+                const venue = hit['prism:publicationName'];
+                const doi = hit['prism:doi'];
+                const year = hit['prism:coverDate'] ? hit['prism:coverDate'].split('-')[0] : null;
+                const volume = hit['prism:volume'];
+                const pages = hit['prism:pageRange'];
+                
+                const match = evaluateMatch(origTitle, origAuthor, title, author, venue);
+                if (match) return { source: "Scopus", confidence: match.confidence, bibtex: createEnrichedBibtex({ title, author, venue, doi, year, volume, pages, publisher: "Elsevier" }) };
+            } catch (e) { logError("Scopus", e.message); } return null;
         }
     </script>
 </body>
