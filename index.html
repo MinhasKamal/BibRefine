@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Source BibTeX Enricher (Safe Proxies)</title>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --text-color: #333;
+            --primary-color: #4a90e2;
+            --border-color: #ccc;
+            --success-bg: #e8f5e9;
+            --card-bg: #ffffff;
+            --textarea-bg: #fafafa;
+            --error-color: #d32f2f;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #181a1b;
+            --text-color: #e8e8e8;
+            --primary-color: #5b9ee6;
+            --border-color: #444;
+            --success-bg: #1e3a23;
+            --card-bg: #242424;
+            --textarea-bg: #1e1e1e;
+            --error-color: #ff6b6b;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 { margin: 0; }
+        p.subtitle { margin-bottom: 2rem; color: #888; }
+        
+        .theme-toggle-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 0.75rem;
+            font-family: monospace;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            resize: vertical;
+            box-sizing: border-box;
+            background-color: var(--textarea-bg);
+            color: var(--text-color);
+        }
+
+        .primary-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .primary-btn:hover { opacity: 0.9; }
+        .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem;}
+        #error-log { 
+            color: var(--error-color); 
+            font-size: 0.85rem; 
+            text-align: left; 
+            background: rgba(255, 0, 0, 0.05);
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: none;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+        .result-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        .result-header h3 { margin: 0; color: var(--primary-color); }
+        .confidence { font-size: 0.85rem; color: #4caf50; background: var(--success-bg); padding: 0.2rem 0.6rem; border-radius: 12px; font-weight: bold;}
+        .result-card textarea { height: 250px; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/gh/ORCID/bibtexParseJs@master/bibtexParse.js"></script>
+    <script src="https://unpkg.com/string-similarity/umd/string-similarity.min.js"></script>
+</head>
+<body>
+
+    <div class="header-container">
+        <h1>📚 Multi-Source BibTeX Enricher</h1>
+        <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark Mode</button>
+    </div>
+    <p class="subtitle">Equipped with resilient CORS proxies and safe JSON parsing.</p>
+    
+    <div class="input-section">
+        <label for="input-bib"><strong>Paste Input:</strong></label>
+        <textarea id="input-bib" placeholder="e.g. @article{...} &#10;OR&#10;PointNeXt: Revisiting PointNet++..."></textarea>
+        <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">Search & Enrich</button>
+    </div>
+    
+    <div id="status-msg"></div>
+    <div id="error-log"></div>
+
+    <div id="results-container" class="results-grid"></div>
+
+    <script>
+        const FUZZY_THRESHOLD = 0.70;
+        let activeErrors = [];
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const btn = document.getElementById('theme-toggle');
+            if (html.getAttribute('data-theme') === 'dark') {
+                html.removeAttribute('data-theme');
+                btn.textContent = '🌙 Dark Mode';
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                btn.textContent = '☀️ Light Mode';
+            }
+        }
+
+        function logError(source, detailedMsg) {
+            activeErrors.push(`[${source}] Failed: ${detailedMsg}`);
+            const el = document.getElementById('error-log');
+            el.style.display = 'block';
+            el.innerHTML = activeErrors.join('<br><br>');
+        }
+
+        // --- NEW FORTIFIED FETCH WRAPPER ---
+        async function fetchWithFallback(url) {
+            let trace = [];
+            
+            // Ordered list of proxy routes to attempt
+            const proxies = [
+                { name: "Direct", prefix: "" },
+                { name: "Codetabs", prefix: "https://api.codetabs.com/v1/proxy?quest=" },
+                { name: "ThingProxy", prefix: "https://thingproxy.freeboard.io/fetch/" },
+                { name: "AllOrigins", prefix: "https://api.allorigins.win/raw?url=" }
+            ];
+
+            for (const proxy of proxies) {
+                const targetUrl = proxy.prefix ? proxy.prefix + encodeURIComponent(url) : url;
+
+                try {
+                    const res = await fetch(targetUrl);
+                    
+                    if (res.ok) {
+                        // 1. Download as raw text first
+                        const rawText = await res.text();
+                        
+                        // 2. Safely attempt to parse JSON
+                        try {
+                            const jsonData = JSON.parse(rawText);
+                            return jsonData; // Success! Return the data.
+                        } catch (parseError) {
+                            // If it's HTML (Cloudflare block), log it and move to the next proxy
+                            trace.push(`${proxy.name}: Returned non-JSON (likely HTML block).`);
+                            continue; 
+                        }
+                    }
+                    
+                    if (res.status === 429) throw new Error("429 Rate Limited");
+                    trace.push(`${proxy.name}: HTTP ${res.status}`);
+                    
+                } catch (e) {
+                    if (e.message.includes("429")) throw e; // Stop trying if we are genuinely rate limited
+                    
+                    // Simplify the error message for cleaner logs
+                    let msg = e.message;
+                    if (msg.includes("NetworkError") || msg.includes("Failed to fetch")) {
+                        msg = "Browser CORS/Network Block";
+                    }
+                    trace.push(`${proxy.name}: ${msg}`);
+                }
+            }
+
+            throw new Error(`All network attempts failed.\nTrace:\n - ${trace.join('\n - ')}`);
+        }
+
+        async function runEnrichment() {
+            const input = document.getElementById('input-bib').value;
+            const statusEl = document.getElementById('status-msg');
+            const errorEl = document.getElementById('error-log');
+            const resultsContainer = document.getElementById('results-container');
+            const btn = document.getElementById('enrich-btn');
+
+            resultsContainer.innerHTML = ''; 
+            errorEl.style.display = 'none';
+            errorEl.innerHTML = '';
+            activeErrors = [];
+            
+            if (!input.trim()) {
+                alert("Please paste some text first.");
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                statusEl.textContent = "Analyzing input format...";
+
+                let originalTitle = "";
+                let originalAuthor = "";
+
+                try {
+                    const parsed = bibtexParse.toJSON(input);
+                    if (parsed && parsed.length > 0 && parsed[0].entryTags && parsed[0].entryTags.title) {
+                        originalTitle = parsed[0].entryTags.title;
+                        originalAuthor = parsed[0].entryTags.author || "";
+                    }
+                } catch (e) {}
+
+                if (!originalTitle) {
+                    const lines = input.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                    if (lines.length === 0) throw new Error("Input is empty or invalid.");
+                    
+                    originalTitle = lines[0];
+                    originalAuthor = lines.length > 1 ? lines[1] : ""; 
+                }
+
+                const braceFreeTitle = originalTitle.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
+                const braceFreeAuthor = originalAuthor.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
+
+                statusEl.textContent = `Searching APIs for: "${braceFreeTitle.substring(0, 50)}..."`;
+
+                const promises = [
+                    fetchDBLP(braceFreeTitle, originalTitle, originalAuthor),
+                    fetchOpenAlex(braceFreeTitle, originalTitle, originalAuthor),
+                    fetchCrossRef(braceFreeTitle, braceFreeAuthor, originalTitle, originalAuthor),
+                    fetchSemanticScholar(braceFreeTitle, originalTitle, originalAuthor)
+                ];
+
+                const results = await Promise.allSettled(promises);
+                
+                let foundAny = false;
+                results.forEach(result => {
+                    if (result.status === 'fulfilled' && result.value) {
+                        renderResultCard(result.value);
+                        foundAny = true;
+                    }
+                });
+
+                statusEl.textContent = foundAny ? "Search complete!" : "Search finished. See error logs below if results are missing.";
+
+            } catch (err) {
+                statusEl.textContent = `Error: ${err.message}`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- Processing & Evaluation Functions ---
+
+        function cleanString(str) {
+            if (!str) return "";
+            return str.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').replace(/[.,:;'"-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+
+        function getFirstAuthorLastName(authorStr) {
+            if (!authorStr) return "";
+            let firstAuthor = authorStr.split(/\band\b/i)[0].trim();
+            if (firstAuthor.includes(',')) {
+                return firstAuthor.split(',')[0].trim().toLowerCase();
+            } else {
+                let parts = firstAuthor.split(/\s+/);
+                return parts[parts.length - 1].trim().toLowerCase();
+            }
+        }
+
+        function generateCitationKey(apiAuthor, apiYear) {
+            let lastName = "paper";
+            if (apiAuthor) {
+                let firstAuthor = apiAuthor.split(/\band\b/i)[0].trim();
+                if (firstAuthor.includes(',')) {
+                    lastName = firstAuthor.split(',')[0].trim();
+                } else {
+                    let parts = firstAuthor.split(/\s+/);
+                    lastName = parts[parts.length - 1].trim();
+                }
+                lastName = lastName.replace(/[^a-zA-Z]/g, '').toLowerCase(); 
+            }
+            return lastName + (apiYear || "");
+        }
+
+        function evaluateMatch(originalTitle, originalAuthor, foundTitleRaw, foundAuthorRaw, foundVenue) {
+            const foundTitle = cleanString(foundTitleRaw);
+            const foundAuthor = cleanString(foundAuthorRaw);
+            const origTitle = cleanString(originalTitle);
+            const origAuthor = cleanString(originalAuthor);
+
+            if (!foundTitle || !origTitle) return null;
+            
+            const titleSim = stringSimilarity.compareTwoStrings(origTitle, foundTitle);
+            let authorSim = 1.0; 
+            
+            if (origAuthor && foundAuthor) {
+                authorSim = stringSimilarity.compareTwoStrings(origAuthor, foundAuthor);
+            }
+
+            const score = (titleSim * 0.8) + (authorSim * 0.2);
+            
+            if (score >= FUZZY_THRESHOLD && foundVenue) {
+                return { confidence: Math.round(score * 100) };
+            }
+            return null;
+        }
+
+        function createEnrichedBibtex(updates) {
+            const citationKey = generateCitationKey(updates.author, updates.year);
+            const newEntry = { citationKey: citationKey, entryType: 'misc', entryTags: {} };
+
+            if (updates.title) newEntry.entryTags.title = `{${updates.title}}`;
+            if (updates.author) newEntry.entryTags.author = `{${updates.author}}`;
+
+            if (updates.venue) {
+                const venueStr = updates.venue;
+                if (venueStr.toLowerCase().includes('journal') || venueStr.toLowerCase().includes('transactions') || venueStr.toLowerCase().includes('arxiv')) {
+                    newEntry.entryType = 'article';
+                    newEntry.entryTags.journal = `{${venueStr}}`;
+                } else {
+                    newEntry.entryType = 'inproceedings';
+                    newEntry.entryTags.booktitle = `{${venueStr}}`;
+                }
+            }
+
+            const mapFields = ['doi', 'year', 'publisher', 'volume', 'number', 'pages', 'url', 'abstract', 'note'];
+            mapFields.forEach(field => {
+                if (updates[field]) newEntry.entryTags[field] = `{${updates[field]}}`;
+            });
+            
+            return bibtexParse.toBibtex([newEntry], false);
+        }
+
+        function renderResultCard(data) {
+            const container = document.getElementById('results-container');
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            card.innerHTML = `
+                <div class="result-header">
+                    <h3>${data.source}</h3>
+                    <span class="confidence">${data.confidence}% Match</span>
+                </div>
+                <textarea readonly>${data.bibtex}</textarea>
+            `;
+            container.appendChild(card);
+        }
+
+        // --- Target API Handlers ---
+
+        async function fetchDBLP(queryTitle, originalTitle, originalAuthor) {
+            try {
+                const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(queryTitle)}&format=json&h=1`;
+                const data = await fetchWithFallback(url);
+                
+                const hit = data?.result?.hits?.hit?.[0]?.info;
+                if (!hit) return null;
+
+                let fullAuthorList = "";
+                if (hit.authors?.author) {
+                    const authorsArr = Array.isArray(hit.authors.author) ? hit.authors.author : [hit.authors.author];
+                    fullAuthorList = authorsArr.map(a => a.text).join(" and ");
+                }
+                const firstAuthor = fullAuthorList.split(" and ")[0];
+                let foundVenue = Array.isArray(hit.venue) ? hit.venue[0] : hit.venue;
+
+                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
+                if (match) {
+                    return {
+                        source: "DBLP",
+                        confidence: match.confidence,
+                        bibtex: createEnrichedBibtex({ 
+                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
+                            doi: hit.doi, year: hit.year, pages: hit.pages, volume: hit.volume, 
+                            number: hit.number, publisher: hit.publisher, url: hit.ee || hit.url
+                        })
+                    };
+                }
+            } catch (e) {
+                logError("DBLP", e.message);
+            } 
+            return null;
+        }
+
+        async function fetchOpenAlex(queryTitle, originalTitle, originalAuthor) {
+            try {
+                const url = `https://api.openalex.org/works?filter=title.search:${encodeURIComponent(queryTitle)}&per-page=1`;
+                const data = await fetchWithFallback(url);
+                
+                const hit = data?.results?.[0];
+                if (!hit) return null;
+
+                const fullAuthorList = (hit.authorships || []).map(a => a.author.display_name).join(" and ");
+                const firstAuthor = fullAuthorList.split(" and ")[0];
+                const foundVenue = hit.primary_location?.source?.display_name;
+                const pages = (hit.biblio?.first_page && hit.biblio?.last_page) ? `${hit.biblio.first_page}--${hit.biblio.last_page}` : null;
+
+                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
+                if (match) {
+                    return {
+                        source: "OpenAlex",
+                        confidence: match.confidence,
+                        bibtex: createEnrichedBibtex({ 
+                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
+                            doi: hit.doi ? hit.doi.replace('https://doi.org/', '') : null, 
+                            year: hit.publication_year, volume: hit.biblio?.volume, number: hit.biblio?.issue, 
+                            pages: pages, publisher: hit.primary_location?.source?.host_organization_name, 
+                            url: hit.id, note: hit.cited_by_count ? `Cited by: ${hit.cited_by_count}` : null
+                        })
+                    };
+                }
+            } catch (e) {
+                logError("OpenAlex", e.message);
+            } 
+            return null;
+        }
+
+        async function fetchCrossRef(queryTitle, queryAuthor, originalTitle, originalAuthor) {
+            try {
+                const authorLastName = getFirstAuthorLastName(queryAuthor);
+                let url = `https://api.crossref.org/works?query.title=${encodeURIComponent(queryTitle)}&select=title,author,container-title,DOI,issued,publisher,volume,issue,page,URL,abstract&rows=1`;
+                if (authorLastName) url += `&query.author=${encodeURIComponent(authorLastName)}`;
+                
+                const data = await fetchWithFallback(url);
+                
+                const hit = data?.message?.items?.[0];
+                if (!hit) return null;
+
+                const hitTitle = hit.title?.[0];
+                const fullAuthorList = (hit.author || []).map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(" and ");
+                const firstAuthor = fullAuthorList.split(" and ")[0];
+                const foundVenue = hit['container-title']?.[0];
+                
+                let abstract = hit.abstract || null;
+                if (abstract) abstract = abstract.replace(/<[^>]*>?/gm, '').trim(); 
+
+                const match = evaluateMatch(originalTitle, originalAuthor, hitTitle, firstAuthor, foundVenue);
+                if (match) {
+                    return {
+                        source: "CrossRef",
+                        confidence: match.confidence,
+                        bibtex: createEnrichedBibtex({ 
+                            title: hitTitle, author: fullAuthorList, venue: foundVenue, 
+                            doi: hit.DOI, year: hit.issued?.['date-parts']?.[0]?.[0], publisher: hit.publisher, 
+                            volume: hit.volume, number: hit.issue, pages: hit.page, url: hit.URL, abstract: abstract
+                        })
+                    };
+                }
+            } catch (e) {
+                logError("CrossRef", e.message);
+            } 
+            return null;
+        }
+
+        async function fetchSemanticScholar(queryTitle, originalTitle, originalAuthor) {
+            try {
+                const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(queryTitle)}&fields=title,authors,venue,year,externalIds,abstract,url,citationCount,isOpenAccess,pages,volume,journal&limit=1`;
+                const data = await fetchWithFallback(url);
+                
+                const hit = data?.data?.[0];
+                if (!hit) return null;
+
+                const fullAuthorList = (hit.authors || []).map(a => a.name).join(" and ");
+                const firstAuthor = fullAuthorList.split(" and ")[0];
+                const foundVenue = hit.journal?.name || hit.venue;
+
+                const match = evaluateMatch(originalTitle, originalAuthor, hit.title, firstAuthor, foundVenue);
+                if (match) {
+                    return {
+                        source: "Semantic Scholar",
+                        confidence: match.confidence,
+                        bibtex: createEnrichedBibtex({ 
+                            title: hit.title, author: fullAuthorList, venue: foundVenue, 
+                            doi: hit.externalIds?.DOI, year: hit.year, abstract: hit.abstract, url: hit.url, 
+                            pages: hit.pages, volume: hit.volume, 
+                            note: `Citations: ${hit.citationCount} | Open Access: ${hit.isOpenAccess}`
+                        })
+                    };
+                }
+            } catch (e) {
+                logError("Semantic Scholar", e.message);
+            } 
+            return null;
+        }
+    </script>
+</body>
+</html>
