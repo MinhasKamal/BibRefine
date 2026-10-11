@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Source BibTeX Enricher (Local Server Ready)</title>
+    <title>Multi-Source BibTeX Enricher (Fixed Routing)</title>
     <style>
         :root {
             --bg-color: #f4f4f9;
@@ -96,7 +96,6 @@
         .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem;}
-        #file-warning { color: var(--error-color); text-align: center; font-weight: bold; margin-bottom: 1rem; display: none; background: rgba(255,0,0,0.1); padding: 1rem; border-radius: 8px;}
         
         #error-log { 
             color: var(--error-color); font-size: 0.85rem; text-align: left; 
@@ -134,15 +133,11 @@
             <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()">🌙 Dark</button>
         </div>
     </div>
-    <p class="subtitle">Extracts deep API errors if proxies are blocked by Cloudflare or WAFs.</p>
+    <p class="subtitle">Fixed Semantic Scholar 400 error and integrated WAF-bypassing proxies.</p>
     
-    <div id="file-warning">
-        ⚠️ Warning: You are running this via a file:/// URL. Your browser will strictly block all API connections. Please run this using a local server (e.g., Python http.server or VS Code Live Server).
-    </div>
-
     <div id="settings-panel" class="settings-panel">
         <label>Custom CORS Proxy URL (Optional)</label>
-        <span class="settings-note">Leave empty to use built-in fallbacks. Useful if public proxies are blocked. (e.g., https://corsproxy.io/?)</span>
+        <span class="settings-note">Leave empty to use built-in fallbacks. (e.g., https://corsproxy.io/?)</span>
         <input type="text" id="setting-proxy" placeholder="https://your-proxy.com/?url=">
         
         <label>Unpaywall Email (Required for Unpaywall)</label>
@@ -162,11 +157,6 @@
     <div id="results-container" class="results-grid"></div>
 
     <script>
-        // Check for local file execution and display warning
-        if (window.location.protocol === 'file:') {
-            document.getElementById('file-warning').style.display = 'block';
-        }
-
         const FUZZY_THRESHOLD = 0.70;
         let activeErrors = [];
 
@@ -192,20 +182,29 @@
             el.innerHTML = activeErrors.join('\n\n');
         }
 
+        // --- FORTIFIED ROUTING WITH CORSProxy.io ---
         async function fetchWithFallback(url) {
             let trace = [];
             const customProxy = document.getElementById('setting-proxy').value.trim();
             
+            // Re-ordered proxies to prioritize WAF-evading services
             let proxies = customProxy 
                 ? [{ name: "Custom Proxy", prefix: customProxy }]
                 : [
                     { name: "Direct", prefix: "" },
-                    { name: "AllOrigins Get", prefix: "https://api.allorigins.win/get?url=" },
-                    { name: "Codetabs", prefix: "https://api.codetabs.com/v1/proxy?quest=" }
+                    { name: "CorsProxy.io", prefix: "https://corsproxy.io/?" }, 
+                    { name: "AllOrigins Get", prefix: "https://api.allorigins.win/get?url=" }
                 ];
 
             for (const proxy of proxies) {
-                const targetUrl = proxy.prefix ? proxy.prefix + encodeURIComponent(url) : url;
+                // corsproxy.io works best when the URL is NOT encoded in the param. AllOrigins requires it to be encoded.
+                let targetUrl;
+                if (proxy.name === "CorsProxy.io") {
+                    targetUrl = proxy.prefix + url; 
+                } else {
+                    targetUrl = proxy.prefix ? proxy.prefix + encodeURIComponent(url) : url;
+                }
+
                 try {
                     const res = await fetch(targetUrl);
                     if (res.ok) {
@@ -219,9 +218,10 @@
                             } catch(e) { /* ignore */ }
                         }
 
+                        // Cloudflare WAF check
                         if (contentToParse.trim().startsWith('<') && !url.includes('arxiv.org')) {
                             const snippet = contentToParse.substring(0, 80).replace(/\n/g, ' ');
-                            trace.push(` - ${proxy.name}: WAF Blocked (Returned HTML: ${snippet}...)`);
+                            trace.push(` - ${proxy.name}: WAF Blocked (HTML: ${snippet}...)`);
                             continue;
                         }
                         return contentToParse; 
@@ -401,14 +401,17 @@
 
         async function fetchSemanticScholar(qTitle, origTitle, origAuthor) {
             try {
+                // FIX: Removed invalid fields causing 400 Bad Request
                 const safeQ = qTitle.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0,10).join(' ');
-                const raw = await fetchWithFallback(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(safeQ)}&fields=title,authors,venue,year,externalIds,abstract,url,citationCount,isOpenAccess,pages,journal&limit=1`);
+                if (!safeQ) return null;
+
+                const raw = await fetchWithFallback(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(safeQ)}&fields=title,authors,venue,year,externalIds,abstract,url,citationCount,isOpenAccess&limit=1`);
                 const hit = JSON.parse(raw)?.data?.[0];
                 if (!hit) return null;
                 const authorList = (hit.authors || []).map(a => a.name).join(" and ");
-                const venue = hit.journal?.name || hit.venue;
+                const venue = hit.venue;
                 const match = evaluateMatch(origTitle, origAuthor, hit.title, authorList?.split(" and ")[0], venue);
-                if (match) return { source: "Semantic Scholar", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.externalIds?.DOI, year: hit.year, abstract: hit.abstract, url: hit.url, pages: hit.pages, note: `Citations: ${hit.citationCount}` }) };
+                if (match) return { source: "Sem. Scholar", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.externalIds?.DOI, year: hit.year, abstract: hit.abstract, url: hit.url, note: `Citations: ${hit.citationCount}` }) };
             } catch (e) { logError("Semantic Scholar", e.message); } return null;
         }
 
@@ -435,7 +438,6 @@
         async function fetchUnpaywall(qTitle, origTitle, origAuthor) {
             try {
                 const email = document.getElementById('setting-email').value || "dummy-user@example.com";
-                // FIX 422: Removed explicit quotation marks around the query string
                 const raw = await fetchWithFallback(`https://api.unpaywall.org/v2/search/?query=${encodeURIComponent(qTitle)}&email=${encodeURIComponent(email)}`);
                 const data = JSON.parse(raw);
                 const hit = data.results?.[0]?.response;
