@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BibTeX Enricher (Smart Merge)</title>
+    <title>BibRefinery</title>
     <style>
         :root {
             --bg-color: #f4f4f9;
@@ -35,7 +35,7 @@
             color: var(--text-color);
             max-width: 1000px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 1rem;
             transition: background-color 0.3s, color 0.3s;
         }
 
@@ -45,14 +45,13 @@
             align-items: center;
         }
 
-        h1 { margin: 0; font-size: 1.8rem;}
-        p.subtitle { margin-bottom: 1.5rem; color: #888; }
+        h1 { margin: 0; font-size: 1.8rem; margin-bottom: 1.0rem; }
         
         .icon-btn {
             background: none; border: 1px solid var(--border-color);
-            color: var(--text-color); padding: 0.5rem 1rem;
-            border-radius: 20px; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.2s;
+            color: var(--text-color); padding: 0.5rem 1.0rem;
+            border-radius: 5px; cursor: pointer; font-size: 0.9rem;
+            transition: background 0.2s; margin-bottom: 1.0rem;
         }
         .icon-btn:hover { background: var(--border-color); }
 
@@ -75,15 +74,6 @@
         }
         .primary-btn:hover { opacity: 0.9; }
         .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        
-        #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem; min-height: 1.5em;}
-        
-        #error-log { 
-            color: var(--error-color); font-size: 0.85rem; text-align: left; 
-            background: rgba(255, 0, 0, 0.05); padding: 0.5rem;
-            border-radius: 4px; display: none; font-family: monospace;
-            white-space: pre-wrap; word-break: break-all;
-        }
 
         /* Merged Section Styles */
         .merged-section {
@@ -91,16 +81,52 @@
             background: var(--card-bg);
             border: 2px solid var(--merged-border);
             border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
+            padding: 1.0rem;
+            margin-bottom: 1.5rem;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .merged-section h2 { margin-top: 0; color: var(--merged-border); display: flex; align-items: center; gap: 0.5rem;}
-        .merged-section textarea { height: 250px; font-size: 0.9rem; border-color: var(--merged-border); }
+        .merged-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;
+        }
+        .merged-header h2 { margin: 0; color: var(--merged-border); display: flex; align-items: center; gap: 0.5rem;font-size: 1.5rem;}
+        .merged-section textarea { height: 250px; font-size: 0.9rem; border-color: var(--merged-border); margin-bottom: 0;}
         
+        .action-btn {
+            background: var(--textarea-bg); border: 1px solid var(--border-color);
+            color: var(--text-color); padding: 0.4rem 0.8rem; border-radius: 4px;
+            cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: background 0.2s;
+        }
+        .action-btn:hover { background: var(--border-color); }
+
+        /* Live Activity Log */
+        .activity-log {
+            background-color: #1e1e1e; /* Always dark for terminal feel */
+            color: #d4d4d4;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+            height: 160px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+            display: none;
+        }
+        .activity-log h3 { 
+            margin-top: 0; font-size: 1rem; color: #fff; margin-bottom: 0.5rem; 
+            border-bottom: 1px solid #333; padding-bottom: 0.5rem; 
+        }
+        .log-entry { margin-bottom: 0.3rem; line-height: 1.4; word-break: break-all;}
+        .log-time { color: #888; margin-right: 0.5rem; }
+        .log-info { color: #569cd6; }
+        .log-success { color: #4caf50; }
+        .log-warning { color: #d7ba7d; }
+        .log-error { color: #f44336; }
+
         .results-grid {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem; margin-top: 1rem;
+            gap: 1.5rem;
         }
         .result-card {
             background: var(--card-bg); border: 1px solid var(--border-color);
@@ -122,79 +148,133 @@
 <body>
 
     <div class="header-container">
-        <h1>📚 BibTeX Enricher</h1>
-        <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()">🌙 Dark</button>
+        <h1>BibRefinery</h1>
+        <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()">☀️</button>
     </div>
-    <p class="subtitle">Extracts and intelligently merges metadata from input, OpenAlex, CrossRef, and OpenAIRE.</p>
 
     <div class="input-section">
         <textarea id="input-bib" placeholder="Paste BibTeX or paper title here..."></textarea>
-        <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">🔍 Search & Enrich</button>
+        <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">🔍 Search & Merge</button>
     </div>
     
-    <div id="status-msg"></div>
-    <div id="error-log"></div>
-
+    <!-- 1. Merged Result -->
     <div id="merged-container" class="merged-section">
-        <h2>🌟 Merged Best Result</h2>
+        <div class="merged-header">
+            <h2>🌟 Merged Result</h2>
+            <button class="action-btn" onclick="copyToClipboard(this, 'merged-bib')">📋</button>
+        </div>
         <textarea id="merged-bib" readonly></textarea>
     </div>
 
+    <!-- 2. Live Activity Log -->
+    <div id="activity-log-container" class="activity-log">
+        <h3>Log</h3>
+        <div id="activity-log-content"></div>
+    </div>
+
+    <!-- 3. Individual API Results -->
     <div id="results-container" class="results-grid"></div>
 
     <script>
         const FUZZY_THRESHOLD = 0.70;
-        let activeErrors = [];
 
         function toggleTheme() {
             const html = document.documentElement;
             const btn = document.getElementById('theme-toggle');
             if (html.getAttribute('data-theme') === 'dark') {
-                html.removeAttribute('data-theme'); btn.textContent = '🌙 Dark';
+                html.removeAttribute('data-theme'); btn.textContent = '☀️';
             } else {
-                html.setAttribute('data-theme', 'dark'); btn.textContent = '☀️ Light';
+                html.setAttribute('data-theme', 'dark'); btn.textContent = '🌙';
             }
         }
 
-        function logError(source, detailedMsg) {
-            activeErrors.push(`[${source}] Failed: ${detailedMsg}`);
-            const el = document.getElementById('error-log');
-            el.style.display = 'block';
-            el.innerHTML = activeErrors.join('\n');
+        // Live Log Function
+        function appendLog(message, type = 'info') {
+            const logContainer = document.getElementById('activity-log-container');
+            const content = document.getElementById('activity-log-content');
+            
+            logContainer.style.display = 'block'; // Ensure it's visible
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            
+            const time = new Date().toLocaleTimeString([], {hour12: false});
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            
+            content.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll to bottom
+        }
+
+        function clearLogs() {
+            document.getElementById('activity-log-content').innerHTML = '';
+        }
+
+        function copyToClipboard(btnElement, textareaId) {
+            const text = document.getElementById(textareaId).value;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btnElement.innerHTML;
+                btnElement.innerHTML = '✅ Copied!';
+                setTimeout(() => btnElement.innerHTML = originalText, 2000);
+            });
         }
 
         async function safeFetch(url) {
             try {
                 const res = await fetch(url);
                 if (!res.ok) {
-                    if (res.status === 429) throw new Error("Rate Limited");
-                    if (res.status === 400) throw new Error("Bad Request (Invalid Syntax)");
+                    if (res.status === 429) throw new Error("429 Rate Limited");
+                    if (res.status === 400) throw new Error("400 Bad Request (Invalid Syntax)");
                     throw new Error(`HTTP ${res.status}`);
                 }
                 return await res.json();
             } catch (e) {
-                throw new Error(e.message === "Failed to fetch" ? "Network Error (CORS or Offline)" : e.message);
+                throw new Error(e.message === "Failed to fetch" ? "Network Error (CORS/Offline)" : e.message);
             }
         }
 
-        // --- MERGING ALGORITHM ---
-        function chooseBestValue(val1, val2) {
+        // --- MERGING ALGORITHM WITH PENALTIES ---
+
+        function getQualityScore(key, val) {
+            let score = 100;
+            const str = val.replace(/[{}]/g, '').trim();
+
+            if (key.toLowerCase() === 'author' && /\d/.test(str)) {
+                score -= 50;
+            }
+
+            if (key.toLowerCase() === 'booktitle' || key.toLowerCase() === 'journal' || key.toLowerCase() === 'publisher') {
+                const parts = str.split(/[\/\-]/).map(p => p.trim().toLowerCase()).filter(p => p.length > 8);
+                let hasDuplicate = false;
+                
+                for (let i = 0; i < parts.length; i++) {
+                    for (let j = i + 1; j < parts.length; j++) {
+                        if (stringSimilarity.compareTwoStrings(parts[i], parts[j]) > 0.7) {
+                            hasDuplicate = true;
+                            break;
+                        }
+                    }
+                    if (hasDuplicate) break;
+                }
+                if (hasDuplicate) score -= 50;
+            }
+
+            return score;
+        }
+
+        function chooseBestValue(key, val1, val2) {
             if (!val1) return val2;
             if (!val2) return val1;
 
-            // 1. Most Characters
-            if (val1.length !== val2.length) {
-                return val1.length > val2.length ? val1 : val2;
-            }
+            const score1 = getQualityScore(key, val1);
+            const score2 = getQualityScore(key, val2);
+
+            if (score1 !== score2) return score1 > score2 ? val1 : val2;
+            if (val1.length !== val2.length) return val1.length > val2.length ? val1 : val2;
             
-            // 2. Most Capital Letters
             const caps1 = (val1.match(/[A-Z]/g) || []).length;
             const caps2 = (val2.match(/[A-Z]/g) || []).length;
-            if (caps1 !== caps2) {
-                return caps1 > caps2 ? val1 : val2;
-            }
+            if (caps1 !== caps2) return caps1 > caps2 ? val1 : val2;
             
-            // 3. Comes First (Order of insertion)
             return val1; 
         }
 
@@ -205,24 +285,21 @@
             let mergedKey = entries[0].citationKey || 'mergedPaper';
             let mergedTags = {};
 
-            // Prioritize standard entry types over 'misc'
             const validTypes = entries.map(e => e.entryType).filter(t => t && t.toLowerCase() !== 'misc');
             if (validTypes.length > 0 && mergedType.toLowerCase() === 'misc') mergedType = validTypes[0];
 
-            // Prioritize non-default citation keys
             const validKeys = entries.map(e => e.citationKey).filter(k => k && k !== 'paper');
             if (validKeys.length > 0 && (!mergedKey || mergedKey === 'paper' || mergedKey === 'mergedPaper')) {
                 mergedKey = validKeys[0];
             }
 
-            // Iterate over all properties from all sources
             for (let entry of entries) {
                 if (!entry.entryTags) continue;
                 for (let [key, value] of Object.entries(entry.entryTags)) {
                     if (!mergedTags[key]) {
                         mergedTags[key] = value;
                     } else {
-                        mergedTags[key] = chooseBestValue(mergedTags[key], value);
+                        mergedTags[key] = chooseBestValue(key, mergedTags[key], value);
                     }
                 }
             }
@@ -232,23 +309,21 @@
 
         async function runEnrichment() {
             const input = document.getElementById('input-bib').value;
-            const statusEl = document.getElementById('status-msg');
-            const errorEl = document.getElementById('error-log');
             const resultsContainer = document.getElementById('results-container');
             const mergedContainer = document.getElementById('merged-container');
             const btn = document.getElementById('enrich-btn');
 
             resultsContainer.innerHTML = ''; 
-            errorEl.style.display = 'none'; errorEl.innerHTML = ''; activeErrors = [];
             mergedContainer.style.display = 'none';
+            clearLogs();
             
             if (!input.trim()) return alert("Please paste some text first.");
 
             try {
-                // VISUAL LOADING STATE
                 btn.disabled = true;
                 btn.innerHTML = '⏳ Searching...';
-                statusEl.textContent = "Analyzing input format...";
+                
+                appendLog("Parsing input data...", "info");
 
                 let originalTitle = ""; let originalAuthor = "";
                 let inputParsedObj = null;
@@ -258,7 +333,8 @@
                     if (parsed && parsed.length > 0 && parsed[0].entryTags) {
                         originalTitle = parsed[0].entryTags.title || "";
                         originalAuthor = parsed[0].entryTags.author || "";
-                        inputParsedObj = parsed[0]; // Capture original for merging
+                        inputParsedObj = parsed[0]; 
+                        appendLog("Successfully parsed valid BibTeX input.", "success");
                     }
                 } catch (e) {}
 
@@ -266,12 +342,13 @@
                     const lines = input.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
                     if (lines.length === 0) throw new Error("Input is empty.");
                     originalTitle = lines[0]; originalAuthor = lines.length > 1 ? lines[1] : ""; 
+                    appendLog("Input is not valid BibTeX. Falling back to plain-text heuristics.", "warning");
                 }
 
                 const braceFreeTitle = originalTitle.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
                 const braceFreeAuthor = originalAuthor.replace(/[{}]/g, '').replace(/[\n\r]/g, ' ').trim();
 
-                statusEl.textContent = `Searching APIs for: "${braceFreeTitle.substring(0, 40)}..."`;
+                appendLog(`Initiating queries for: "${braceFreeTitle.substring(0, 40)}..."`, "info");
 
                 const promises = [
                     fetchOpenAlex(braceFreeTitle, originalTitle, originalAuthor),
@@ -283,33 +360,33 @@
                 let foundAny = false;
                 let entriesToMerge = [];
 
-                // 1. Add User Input as highest priority base
                 if (inputParsedObj) entriesToMerge.push(inputParsedObj);
 
-                // 2. Process API Results
+                appendLog("All API requests completed. Analyzing matches...", "info");
+
                 results.forEach(result => {
                     if (result.status === 'fulfilled' && result.value) {
                         renderResultCard(result.value);
-                        entriesToMerge.push(result.value.bibtex.parsedObj); // Collect for merging
+                        entriesToMerge.push(result.value.bibtex.parsedObj);
                         foundAny = true;
                     }
                 });
 
-                // 3. Render Merged Result
                 if (foundAny && entriesToMerge.length > 0) {
                     const finalMergedObj = mergeBibtexEntries(entriesToMerge);
                     const finalMergedStr = bibtexParse.toBibtex([finalMergedObj], false);
                     document.getElementById('merged-bib').value = finalMergedStr;
                     mergedContainer.style.display = 'block';
+                    appendLog("Metadata intelligently merged and ranked.", "success");
+                } else {
+                    appendLog("No valid matches exceeded the 70% fuzzy threshold.", "error");
                 }
 
-                statusEl.textContent = foundAny ? "✅ Search & Merge complete!" : "❌ No confident matches found. See logs below.";
             } catch (err) {
-                statusEl.textContent = `Error: ${err.message}`;
+                appendLog(`Fatal Error: ${err.message}`, "error");
             } finally {
-                // VISUAL LOADING STATE RESTORE
                 btn.disabled = false;
-                btn.innerHTML = '🔍 Search & Enrich';
+                btn.innerHTML = '🔍 Search & Merge';
             }
         }
 
@@ -333,16 +410,25 @@
             return lastName + (apiYear || "");
         }
 
-        function evaluateMatch(originalTitle, originalAuthor, foundTitleRaw, foundAuthorRaw, foundVenue) {
+        function evaluateMatch(source, originalTitle, originalAuthor, foundTitleRaw, foundAuthorRaw, foundVenue) {
             const foundTitle = cleanString(foundTitleRaw); const foundAuthor = cleanString(foundAuthorRaw);
             const origTitle = cleanString(originalTitle); const origAuthor = cleanString(originalAuthor);
-            if (!foundTitle || !origTitle) return null;
+            
+            if (!foundTitle || !origTitle) {
+                appendLog(`[${source}] Rejected: Missing title in API response.`, "warning");
+                return null;
+            }
             
             const titleSim = stringSimilarity.compareTwoStrings(origTitle, foundTitle);
             const authorSim = (origAuthor && foundAuthor) ? stringSimilarity.compareTwoStrings(origAuthor, foundAuthor) : 1.0; 
             const score = (titleSim * 0.8) + (authorSim * 0.2);
             
-            if (score >= FUZZY_THRESHOLD && foundVenue) return { confidence: Math.round(score * 100) };
+            if (score >= FUZZY_THRESHOLD && foundVenue) {
+                appendLog(`[${source}] Accepted: ${Math.round(score * 100)}% match.`, "success");
+                return { confidence: Math.round(score * 100) };
+            }
+            
+            appendLog(`[${source}] Rejected: Low score (${Math.round(score * 100)}%) or missing venue.`, "warning");
             return null;
         }
 
@@ -386,25 +472,30 @@
         // --- FETCHERS ---
 
         async function fetchOpenAlex(qTitle, origTitle, origAuthor) {
+            appendLog("[OpenAlex] Fetching data...", "info");
             try {
                 const safeQ = qTitle.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
                 if (!safeQ) return null;
 
                 const data = await safeFetch(`https://api.openalex.org/works?filter=title.search:${encodeURIComponent(safeQ)}&per-page=1`);
                 const hit = data?.results?.[0];
-                if (!hit) return null;
+                if (!hit) {
+                    appendLog("[OpenAlex] No results found.", "warning");
+                    return null;
+                }
 
                 const authorList = (hit.authorships || []).map(a => a.author.display_name).join(" and ");
                 const firstAuthor = authorList.split(" and ")[0];
                 const venue = hit.primary_location?.source?.display_name;
                 const pages = (hit.biblio?.first_page && hit.biblio?.last_page) ? `${hit.biblio.first_page}--${hit.biblio.last_page}` : null;
                 
-                const match = evaluateMatch(origTitle, origAuthor, hit.title, firstAuthor, venue);
+                const match = evaluateMatch("OpenAlex", origTitle, origAuthor, hit.title, firstAuthor, venue);
                 if (match) return { source: "OpenAlex", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hit.title, author: authorList, venue, doi: hit.doi?.replace('https://doi.org/', ''), year: hit.publication_year, pages, url: hit.id }) };
-            } catch (e) { logError("OpenAlex", e.message); } return null;
+            } catch (e) { appendLog(`[OpenAlex] Error: ${e.message}`, "error"); } return null;
         }
 
         async function fetchCrossRef(qTitle, qAuthor, origTitle, origAuthor) {
+            appendLog("[CrossRef] Fetching data...", "info");
             try {
                 const safeQ = qTitle.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
                 if (!safeQ) return null;
@@ -415,32 +506,39 @@
 
                 const data = await safeFetch(url);
                 const hit = data?.message?.items?.[0];
-                if (!hit) return null;
+                if (!hit) {
+                    appendLog("[CrossRef] No results found.", "warning");
+                    return null;
+                }
 
                 const hitTitle = hit.title?.[0];
                 const authorList = (hit.author || []).map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(" and ");
                 const firstAuthor = authorList.split(" and ")[0];
                 const venue = hit['container-title']?.[0];
                 
-                const match = evaluateMatch(origTitle, origAuthor, hitTitle, firstAuthor, venue);
+                const match = evaluateMatch("CrossRef", origTitle, origAuthor, hitTitle, firstAuthor, venue);
                 if (match) return { source: "CrossRef", confidence: match.confidence, bibtex: createEnrichedBibtex({ title: hitTitle, author: authorList, venue, doi: hit.DOI, year: hit.issued?.['date-parts']?.[0]?.[0], publisher: hit.publisher, url: hit.URL, abstract: hit.abstract?.replace(/<[^>]*>?/gm, '') }) };
-            } catch (e) { logError("CrossRef", e.message); } return null;
+            } catch (e) { appendLog(`[CrossRef] Error: ${e.message}`, "error"); } return null;
         }
 
         async function fetchOpenAIRE(qTitle, origTitle, origAuthor) {
+            appendLog("[OpenAIRE] Fetching data...", "info");
             try {
                 const safeQ = qTitle.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
                 if (!safeQ) return null;
 
                 const data = await safeFetch(`https://api.openaire.eu/search/publications?title=${encodeURIComponent(safeQ)}&format=json&size=1`);
                 const results = data?.response?.results?.result;
-                if (!results || results.length === 0) return null;
+                if (!results || results.length === 0) {
+                    appendLog("[OpenAIRE] No results found.", "warning");
+                    return null;
+                }
                 
                 const metadata = results[0]?.metadata?.["oaf:entity"]?.["oaf:result"];
                 if (!metadata) return null;
 
                 const titleObj = metadata.title;
-                const hitTitle = Array.isArray(titleObj) ? titleObj[0]?.["$"] : titleObj?.["$"];
+                const hitTitle = Array.isArray(titleObj) ? titleObj[0]?.["\$"] : titleObj?.["\$"];
                 
                 let authorList = "";
                 if (metadata.creator) {
@@ -450,7 +548,7 @@
                 const firstAuthor = authorList.split(" and ")[0];
                 
                 const venueObj = metadata.journal || metadata.publisher;
-                const venue = Array.isArray(venueObj) ? venueObj[0]?.["$"] || venueObj[0]?.name : venueObj?.["$"] || venueObj?.name;
+                const venue = Array.isArray(venueObj) ? venueObj[0]?.["\$"] || venueObj[0]?.name : venueObj?.["\$"] || venueObj?.name;
                 
                 let doi = null;
                 if (metadata.pid) {
@@ -464,9 +562,9 @@
                     year = metadata.dateofacceptance["$"].substring(0, 4);
                 }
 
-                let abstract = metadata.description?.["$"] || (Array.isArray(metadata.description) ? metadata.description[0]?.["$"] : null);
+                let abstract = metadata.description?.["\$"] || (Array.isArray(metadata.description) ? metadata.description[0]?.["\$"] : null);
 
-                const match = evaluateMatch(origTitle, origAuthor, hitTitle, firstAuthor, venue);
+                const match = evaluateMatch("OpenAIRE", origTitle, origAuthor, hitTitle, firstAuthor, venue);
                 if (match) {
                     return {
                         source: "OpenAIRE",
@@ -474,7 +572,7 @@
                         bibtex: createEnrichedBibtex({ title: hitTitle, author: authorList, venue: venue, doi: doi, year: year, abstract: abstract })
                     };
                 }
-            } catch (e) { logError("OpenAIRE", e.message); } return null;
+            } catch (e) { appendLog(`[OpenAIRE] Error: ${e.message}`, "error"); } return null;
         }
     </script>
 </body>
