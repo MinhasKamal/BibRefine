@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BibTeX Enricher (Tri-API)</title>
+    <title>BibTeX Enricher (Smart Merge)</title>
     <style>
         :root {
             --bg-color: #f4f4f9;
@@ -14,6 +14,7 @@
             --card-bg: #ffffff;
             --textarea-bg: #fafafa;
             --error-color: #d32f2f;
+            --merged-border: #ffd700;
         }
 
         [data-theme="dark"] {
@@ -25,6 +26,7 @@
             --card-bg: #242424;
             --textarea-bg: #1e1e1e;
             --error-color: #ff6b6b;
+            --merged-border: #b8860b;
         }
 
         body {
@@ -50,7 +52,9 @@
             background: none; border: 1px solid var(--border-color);
             color: var(--text-color); padding: 0.5rem 1rem;
             border-radius: 20px; cursor: pointer; font-size: 0.9rem;
+            transition: background 0.2s;
         }
+        .icon-btn:hover { background: var(--border-color); }
 
         .input-section {
             display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem;
@@ -65,13 +69,14 @@
 
         .primary-btn {
             background-color: var(--primary-color); color: white;
-            border: none; padding: 0.75rem; font-size: 1rem;
+            border: none; padding: 0.75rem 1.5rem; font-size: 1rem;
             border-radius: 4px; cursor: pointer; font-weight: bold;
+            transition: opacity 0.2s;
         }
         .primary-btn:hover { opacity: 0.9; }
-        .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         
-        #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem;}
+        #status-msg { font-weight: bold; text-align: center; margin-bottom: 0.5rem; min-height: 1.5em;}
         
         #error-log { 
             color: var(--error-color); font-size: 0.85rem; text-align: left; 
@@ -79,22 +84,36 @@
             border-radius: 4px; display: none; font-family: monospace;
             white-space: pre-wrap; word-break: break-all;
         }
+
+        /* Merged Section Styles */
+        .merged-section {
+            display: none;
+            background: var(--card-bg);
+            border: 2px solid var(--merged-border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .merged-section h2 { margin-top: 0; color: var(--merged-border); display: flex; align-items: center; gap: 0.5rem;}
+        .merged-section textarea { height: 250px; font-size: 0.9rem; border-color: var(--merged-border); }
         
         .results-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 1.5rem; margin-top: 1rem;
         }
         .result-card {
             background: var(--card-bg); border: 1px solid var(--border-color);
             border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; gap: 0.5rem;
         }
         .result-header {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;
         }
         .result-header h3 { margin: 0; color: var(--primary-color); font-size: 1.1rem; }
         .confidence { font-size: 0.8rem; color: #4caf50; background: var(--success-bg); padding: 0.2rem 0.5rem; border-radius: 12px; font-weight: bold;}
-        .result-card textarea { height: 250px; font-size: 0.85rem; width: 100%; box-sizing: border-box;}
+        .result-card textarea { height: 200px; font-size: 0.85rem; width: 100%; box-sizing: border-box; margin-bottom: 0;}
     </style>
 
     <script src="https://cdn.jsdelivr.net/gh/ORCID/bibtexParseJs@master/bibtexParse.js"></script>
@@ -106,15 +125,21 @@
         <h1>📚 BibTeX Enricher</h1>
         <button id="theme-toggle" class="icon-btn" onclick="toggleTheme()">🌙 Dark</button>
     </div>
-    <p class="subtitle">Extracts clean metadata directly from OpenAlex, CrossRef, and OpenAIRE.</p>
+    <p class="subtitle">Extracts and intelligently merges metadata from input, OpenAlex, CrossRef, and OpenAIRE.</p>
 
     <div class="input-section">
-        <textarea id="input-bib" placeholder="Paste BibTeX or paper title..."></textarea>
-        <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">Search & Enrich</button>
+        <textarea id="input-bib" placeholder="Paste BibTeX or paper title here..."></textarea>
+        <button id="enrich-btn" class="primary-btn" onclick="runEnrichment()">🔍 Search & Enrich</button>
     </div>
     
     <div id="status-msg"></div>
     <div id="error-log"></div>
+
+    <div id="merged-container" class="merged-section">
+        <h2>🌟 Merged Best Result</h2>
+        <textarea id="merged-bib" readonly></textarea>
+    </div>
+
     <div id="results-container" class="results-grid"></div>
 
     <script>
@@ -152,28 +177,88 @@
             }
         }
 
+        // --- MERGING ALGORITHM ---
+        function chooseBestValue(val1, val2) {
+            if (!val1) return val2;
+            if (!val2) return val1;
+
+            // 1. Most Characters
+            if (val1.length !== val2.length) {
+                return val1.length > val2.length ? val1 : val2;
+            }
+            
+            // 2. Most Capital Letters
+            const caps1 = (val1.match(/[A-Z]/g) || []).length;
+            const caps2 = (val2.match(/[A-Z]/g) || []).length;
+            if (caps1 !== caps2) {
+                return caps1 > caps2 ? val1 : val2;
+            }
+            
+            // 3. Comes First (Order of insertion)
+            return val1; 
+        }
+
+        function mergeBibtexEntries(entries) {
+            if (!entries || entries.length === 0) return null;
+            
+            let mergedType = entries[0].entryType || 'misc';
+            let mergedKey = entries[0].citationKey || 'mergedPaper';
+            let mergedTags = {};
+
+            // Prioritize standard entry types over 'misc'
+            const validTypes = entries.map(e => e.entryType).filter(t => t && t.toLowerCase() !== 'misc');
+            if (validTypes.length > 0 && mergedType.toLowerCase() === 'misc') mergedType = validTypes[0];
+
+            // Prioritize non-default citation keys
+            const validKeys = entries.map(e => e.citationKey).filter(k => k && k !== 'paper');
+            if (validKeys.length > 0 && (!mergedKey || mergedKey === 'paper' || mergedKey === 'mergedPaper')) {
+                mergedKey = validKeys[0];
+            }
+
+            // Iterate over all properties from all sources
+            for (let entry of entries) {
+                if (!entry.entryTags) continue;
+                for (let [key, value] of Object.entries(entry.entryTags)) {
+                    if (!mergedTags[key]) {
+                        mergedTags[key] = value;
+                    } else {
+                        mergedTags[key] = chooseBestValue(mergedTags[key], value);
+                    }
+                }
+            }
+
+            return { citationKey: mergedKey, entryType: mergedType, entryTags: mergedTags };
+        }
+
         async function runEnrichment() {
             const input = document.getElementById('input-bib').value;
             const statusEl = document.getElementById('status-msg');
             const errorEl = document.getElementById('error-log');
             const resultsContainer = document.getElementById('results-container');
+            const mergedContainer = document.getElementById('merged-container');
             const btn = document.getElementById('enrich-btn');
 
             resultsContainer.innerHTML = ''; 
             errorEl.style.display = 'none'; errorEl.innerHTML = ''; activeErrors = [];
+            mergedContainer.style.display = 'none';
             
             if (!input.trim()) return alert("Please paste some text first.");
 
             try {
+                // VISUAL LOADING STATE
                 btn.disabled = true;
+                btn.innerHTML = '⏳ Searching...';
                 statusEl.textContent = "Analyzing input format...";
 
                 let originalTitle = ""; let originalAuthor = "";
+                let inputParsedObj = null;
+
                 try {
                     const parsed = bibtexParse.toJSON(input);
-                    if (parsed && parsed.length > 0 && parsed[0].entryTags && parsed[0].entryTags.title) {
-                        originalTitle = parsed[0].entryTags.title;
+                    if (parsed && parsed.length > 0 && parsed[0].entryTags) {
+                        originalTitle = parsed[0].entryTags.title || "";
                         originalAuthor = parsed[0].entryTags.author || "";
+                        inputParsedObj = parsed[0]; // Capture original for merging
                     }
                 } catch (e) {}
 
@@ -196,17 +281,35 @@
 
                 const results = await Promise.allSettled(promises);
                 let foundAny = false;
+                let entriesToMerge = [];
+
+                // 1. Add User Input as highest priority base
+                if (inputParsedObj) entriesToMerge.push(inputParsedObj);
+
+                // 2. Process API Results
                 results.forEach(result => {
                     if (result.status === 'fulfilled' && result.value) {
-                        renderResultCard(result.value); foundAny = true;
+                        renderResultCard(result.value);
+                        entriesToMerge.push(result.value.bibtex.parsedObj); // Collect for merging
+                        foundAny = true;
                     }
                 });
 
-                statusEl.textContent = foundAny ? "Search complete!" : "No confident matches found. See logs below.";
+                // 3. Render Merged Result
+                if (foundAny && entriesToMerge.length > 0) {
+                    const finalMergedObj = mergeBibtexEntries(entriesToMerge);
+                    const finalMergedStr = bibtexParse.toBibtex([finalMergedObj], false);
+                    document.getElementById('merged-bib').value = finalMergedStr;
+                    mergedContainer.style.display = 'block';
+                }
+
+                statusEl.textContent = foundAny ? "✅ Search & Merge complete!" : "❌ No confident matches found. See logs below.";
             } catch (err) {
                 statusEl.textContent = `Error: ${err.message}`;
             } finally {
+                // VISUAL LOADING STATE RESTORE
                 btn.disabled = false;
+                btn.innerHTML = '🔍 Search & Enrich';
             }
         }
 
@@ -259,13 +362,24 @@
 
             const mapFields = ['doi', 'year', 'publisher', 'volume', 'number', 'pages', 'url', 'abstract', 'note'];
             mapFields.forEach(f => { if (updates[f]) newEntry.entryTags[f] = `{${updates[f]}}`; });
-            return bibtexParse.toBibtex([newEntry], false);
+            
+            return {
+                rawString: bibtexParse.toBibtex([newEntry], false),
+                parsedObj: newEntry
+            };
         }
 
         function renderResultCard(data) {
             const container = document.getElementById('results-container');
-            const card = document.createElement('div'); card.className = 'result-card';
-            card.innerHTML = `<div class="result-header"><h3>${data.source}</h3><span class="confidence">${data.confidence}%</span></div><textarea readonly>${data.bibtex}</textarea>`;
+            const card = document.createElement('div'); 
+            card.className = 'result-card';
+            card.innerHTML = `
+                <div class="result-header">
+                    <h3>${data.source}</h3>
+                    <span class="confidence">${data.confidence}% Match</span>
+                </div>
+                <textarea readonly>${data.bibtex.rawString}</textarea>
+            `;
             container.appendChild(card);
         }
 
