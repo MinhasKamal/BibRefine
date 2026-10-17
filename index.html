@@ -226,13 +226,16 @@
             <label for="indentation">Indentation: </label>
             <input type="text" id="indentation" value="  " title="Set the indentation for fields.">
         </div>
-        <button class="action-btn" onclick="indentEntries()">1. Indent</button>
+        <button class="action-btn" onclick="indentEntries()" title="Indents with above amount">1. Indent</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="removeExtraSpaces()" title="e.g., `title =  { The Kamal }` -> `title = {The Kamal}`">2. Remove Extra Spaces</button>
+        <button class="action-btn" onclick="putBlankLine()">2. Put Blank Line Between Entries</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="e.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">3. Lowercase Types & Fields</button>
+        <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces</button>
+    </div>
+    <div class="control-group">
+        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">4. Lowercase Types & Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -242,22 +245,25 @@
     <div class="control-group">
         <label for="field-order">Field Order:</label>
         <input type="text" id="field-order" value="author,title,journal,booktitle,year,month,day,volume,number,pages,organization,publisher,shorttitle,doi">
-        <button class="action-btn" onclick="reorderFields()">4. Reorder Fields</button>
+        <button class="action-btn" onclick="reorderFields()">5. Reorder Fields</button>
     </div>
     <div class="control-group">
         <label for="cap-fields">Fields to be Capitalized:</label>
         <input type="text" id="cap-fields" value="title,journal,booktitle">
-        <button class="action-btn" onclick="capitalizeFields()">5. Capitalize Fields</button>
+        <button class="action-btn" onclick="capitalizeFields()" title="E.g., `down git` -> `Down Git`">6. Capitalize Fields</button>
     </div>
     <div class="control-group">
         <label for="keep-fields">Fields to be Kept:</label>
         <input type="text" id="keep-fields" value="author,title,journal,booktitle,year,shorttitle,doi">
-        <button class="action-btn" onclick="keepFields()" title="Other fields will be removed">6. Keep Fields</button>
+        <button class="action-btn" onclick="keepFields()" title="All other fields will be removed">7. Keep Fields</button>
     </div>
     <div class="control-group">
         <label for="remove-fields">Fields to be Removed:</label>
         <input type="text" id="remove-fields" value="abstract,url,eprint,issn,isbn,editor,location,address,keywords">
-        <button class="action-btn" onclick="removeFields()">7. Remove Fields</button>
+        <button class="action-btn" onclick="removeFields()">8. Remove Fields</button>
+    </div>
+    <div class="control-group">
+        <button class="action-btn" onclick="removeEmptyFields()" title='Removes fields like `note = {}` or `pages = ""`'>9. Remove Empty Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -269,7 +275,7 @@
             <label for="override-keys">Overwrite Existing Keys: </label>
             <input type="checkbox" id="override-keys">
         </div>
-        <button class="action-btn" onclick="generateKeys()" title="If no key is available, then generates key as [AuthorYearTitle]">8. Generate Keys</button>
+        <button class="action-btn" onclick="generateKeys()" title="Key = [AuthorYearShorttitle] or [AuthorYearTitle]">10. Generate Keys</button>
     </div>
     <div class="control-group">
         <div>
@@ -278,7 +284,7 @@
             <label for="author-threshold">; Author (%):</label>
             <input type="number" id="author-threshold" value="60" min="40" max="100">
         </div>
-        <button class="action-btn" onclick="checkDuplicates()">9. Check Duplicates</button>
+        <button class="action-btn" onclick="checkDuplicates()" title="Will provide a list below">11. Check Duplicates</button>
         <textarea id="duplicate-results" readonly placeholder="Duplicates will appear here..."></textarea>
     </div>
 
@@ -677,6 +683,19 @@ As there are no servers, your data never leaves your device. So, it is private, 
         logMessage("Indented successfully!");
     }
     
+    function putBlankLine() {
+        let rawText = inputEl.value;
+
+        // This regex finds a closing brace `}` followed by any whitespace (including newlines)
+        // and then an `@` symbol. It replaces that gap with exactly two newlines.
+        // The `g` flag ensures it does this for every entry, and `m` helps with multiline matching.
+        const newText = rawText.replace(/}(\s*?)@/gm, '}\n\n@');
+
+        setEditorText(newText);
+        logMessage("1 blank line inserted!");
+    }
+
+    
     function removeExtraSpaces() {
         const rawText = inputEl.value;
         const entries = parseBibtex(rawText);
@@ -721,6 +740,11 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const order = document.getElementById('field-order').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
         
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
+        
         entries.forEach(entry => {
             const newFields = {};
             order.forEach(f => {
@@ -744,6 +768,11 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const rawText = inputEl.value;
         const capFields = document.getElementById('cap-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
+        
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
         
         // Strict APA/Chicago minor words list (3 letters or fewer)
         // Words of 4+ letters (With, From, Into, Over) are intentionally omitted so they get capitalized!
@@ -827,6 +856,11 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const fieldsToKeep = document.getElementById('keep-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
         
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
+        
         entries.forEach(entry => {
             const currentKeys = Object.keys(entry.fields);
             
@@ -846,6 +880,11 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const fieldsToRemove = document.getElementById('remove-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
         
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
+        
         entries.forEach(entry => {
             fieldsToRemove.forEach(f => {
                 let actualKey = getFieldKey(entry, f);
@@ -856,6 +895,42 @@ As there are no servers, your data never leaves your device. So, it is private, 
         setEditorText(applyModifiedEntries(rawText, entries));
         logMessage(`Removed fields: ${fieldsToRemove.join(', ')}`);
     }
+    
+    function removeEmptyFields() {
+        const rawText = inputEl.value;
+        const entries = parseBibtex(rawText);
+        
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
+        
+        let removedCount = 0;
+        
+        entries.forEach(entry => {
+            // Check every field in the entry
+            for (let k in entry.fields) {
+                let val = entry.fields[k];
+                
+                // Strip spaces, tabs, newlines, quotes, and braces to see if anything is left
+                let cleanVal = val.replace(/[{}"'\s]/g, '');
+                
+                // If it's completely empty, delete the field from the object
+                if (cleanVal === '') {
+                    delete entry.fields[k];
+                    removedCount++;
+                }
+            }
+        });
+        
+        if (removedCount > 0) {
+            setEditorText(applyModifiedEntries(rawText, entries));
+            logMessage(`Removed ${removedCount} empty field(s)!`);
+        } else {
+            logMessage("No empty fields found.");
+        }
+    }
+
 
     // --- Complex Author Parsing & Key Generation ---
     
@@ -879,6 +954,7 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const entries = parseBibtex(rawText);
         const overrideKeys = document.getElementById('override-keys').checked;
         
+        let generatedKeyCount = 0;
         entries.forEach(entry => {
             if (!overrideKeys && entry.key && entry.key.trim() !== '') {
                 return;
@@ -898,20 +974,21 @@ As there are no servers, your data never leaves your device. So, it is private, 
                 cleanYear = year.replace(/[^0-9]/g, '');
             }
             let titlePart = ''
-            if(shorttitle){
-                titlePart = shorttitle.replace(/[^a-zA-Z0-9]/g, '')
-            } else if(title) {
-                titlePart = title.replace(/[^a-zA-Z0-9 ]/g, '').split(' ').slice(0, 2).join('');
+            if (shorttitle) {
+                titlePart = shorttitle.replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/).slice(0, 2).join('');
+            } else if (title) {
+                titlePart = title.replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/).slice(0, 2).join('');
             }
 
-             entry.key = lastName + cleanYear + titlePart;
+            entry.key = lastName + cleanYear + titlePart;
+            generatedKeyCount ++;
         });
         
         setEditorText(applyModifiedEntries(rawText, entries));
         if (!overrideKeys) {
-            logMessage("Generated MISSING keys!");
+            logMessage(`Generated ${generatedKeyCount} (missing) keys!`);
         } else {
-            logMessage("Regenerated ALL keys!");
+            logMessage(`Regenerated ${generatedKeyCount} (all) keys!`);
         }
     }
 
@@ -1601,6 +1678,37 @@ As there are no servers, your data never leaves your device. So, it is private, 
 
     // Initialize the app
     updateHighlighting();
+    
+    function forceWhitespaceInput(elementId) {
+        const input = document.getElementById(elementId);
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' || event.key === 'Delete' ||
+               event.key === 'ArrowLeft'|| event.key === 'ArrowRight') {
+                return;
+            }
+            
+            // Prevent the browser from moving focus to the next field
+            e.preventDefault();
+            // Get current cursor selection positions
+            const start = this.selectionStart;
+            const end = this.selectionEnd;
+            
+            let char = " ";
+            // Check if the pressed key is Tab (KeyCode 9 or key 'Tab')
+            if (e.key === 'Tab' || e.keyCode === 9) {
+                char = "\t";
+            }
+
+            // Insert the tab character at the current cursor position
+            this.value = this.value.substring(0, start) + char + this.value.substring(end);
+
+            // Move the cursor right after the newly inserted tab character
+            this.selectionStart = this.selectionEnd = start + 1;
+        });
+    }
+
+    forceWhitespaceInput('indentation');
 </script>
 </body>
 </html>
