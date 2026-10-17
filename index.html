@@ -224,18 +224,25 @@
     <div class="control-group">
         <div>
             <label for="indentation">Indentation: </label>
-            <input type="text" id="indentation" value="  " title="Set the indentation for fields.">
+            <input type="text" id="indentation" value="  " title="Put space or tab for indentation">
         </div>
-        <button class="action-btn" onclick="indentEntries()" title="Indents with above amount">1. Indent</button>
+        <button class="action-btn" onclick="indentEntries()" title="Indents with above amount">1. Indent Fields</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="putBlankLine()">2. Put Blank Line Between Entries</button>
+        <div style="margin-bottom: 5px;" title="Put 1 if you don't want to align">
+            <label for="align-amount">Alignment: </label>
+            <input type="number" id="align-amount" value="15" min="1" max="50">
+        </div>
+        <button class="action-btn" onclick="alignFieldValues()" title="Pads spaces so all '=' signs line up">2. Align Field Values</button>
     </div>
     <div class="control-group">
         <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces in Field Values</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">4. Lowercase Entry Types & Fields</button>
+        <button class="action-btn" onclick="putBlankLine()">4. Put Blank Line Between Entries</button>
+    </div>
+    <div class="control-group">
+        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">5. Lowercase Entry Types & Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -245,25 +252,25 @@
     <div class="control-group">
         <label for="cap-fields">Fields to be Capitalized:</label>
         <input type="text" id="cap-fields" value="title,journal,booktitle">
-        <button class="action-btn" onclick="capitalizeFields()" title="E.g., `down git` -> `Down Git`">5. Capitalize Field Values</button>
+        <button class="action-btn" onclick="capitalizeFields()" title="E.g., `down git` -> `Down Git`">6. Capitalize Field Values</button>
     </div>
     <div class="control-group">
         <label for="field-order">Field Order:</label>
         <input type="text" id="field-order" value="author,title,journal,booktitle,year,month,day,volume,number,pages,organization,publisher,shorttitle,doi">
-        <button class="action-btn" onclick="reorderFields()">6. Reorder Fields</button>
+        <button class="action-btn" onclick="reorderFields()">7. Reorder Fields</button>
     </div>
     <div class="control-group">
         <label for="keep-fields">Fields to be Kept:</label>
         <input type="text" id="keep-fields" value="author,title,journal,booktitle,year,shorttitle,doi">
-        <button class="action-btn" onclick="keepFields()" title="All other fields will be removed">7. Keep Fields</button>
+        <button class="action-btn" onclick="keepFields()" title="All other fields will be removed">8. Keep Fields</button>
     </div>
     <div class="control-group">
         <label for="remove-fields">Fields to be Removed:</label>
         <input type="text" id="remove-fields" value="abstract,url,eprint,issn,isbn,editor,location,address,keywords">
-        <button class="action-btn" onclick="removeFields()">8. Remove Fields</button>
+        <button class="action-btn" onclick="removeFields()">9. Remove Fields</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="removeEmptyFields()" title='Removes fields like `note = {}` or `pages = ""`'>9. Remove Empty Fields</button>
+        <button class="action-btn" onclick="removeEmptyFields()" title='Removes fields like `note = {}` or `pages = ""`'>10. Remove Empty Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -275,7 +282,7 @@
             <label for="override-keys">Overwrite Existing Keys: </label>
             <input type="checkbox" id="override-keys">
         </div>
-        <button class="action-btn" onclick="generateKeys()" title="Key = [AuthorYearShorttitle] or [AuthorYearTitle]">10. Generate Keys</button>
+        <button class="action-btn" onclick="generateKeys()" title="Key = [AuthorYearShorttitle] or [AuthorYearTitle]">11. Generate Keys</button>
     </div>
     <div class="control-group">
         <div>
@@ -284,7 +291,7 @@
             <label for="author-threshold">; Author (%):</label>
             <input type="number" id="author-threshold" value="60" min="40" max="100">
         </div>
-        <button class="action-btn" onclick="checkDuplicates()" title="Will provide a list below">11. Check Duplicates</button>
+        <button class="action-btn" onclick="checkDuplicates()" title="Will provide a list below">12. Check Duplicates</button>
         <textarea id="duplicate-results" readonly placeholder="Duplicates will appear here..."></textarea>
     </div>
 
@@ -722,6 +729,49 @@ As there are no servers, your data never leaves your device. So, it is private, 
         setEditorText(newText);
         logMessage("Indented successfully!");
     }
+    
+    function alignFieldValues() {
+        const rawText = inputEl.value;
+        const entries = parseBibtex(rawText);
+        
+        if (entries.length === 0) { 
+            logMessage("No valid entries found."); 
+            return; 
+        }
+        
+        // Get the target alignment column width
+        const alignAmount = parseInt(document.getElementById('align-amount').value, 10) || 14;
+        
+        let newText = "";
+        let lastEnd = 0;
+
+        entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+
+            for (let k in entry.fields) {
+                // Match the start of the line, the leading indent spaces, the key, and the `=` with any spacing
+                let regex = new RegExp(`^([ \\t]*)(${k})(\\s*=\\s*)`, 'im');
+                
+                entryRaw = entryRaw.replace(regex, (match, leadingSpaces, keyStr, equalsPart) => {
+                    // Calculate how many spaces we need. If the key is longer than the alignAmount, just use 1 space.
+                    let padLength = Math.max(1, alignAmount - keyStr.length);
+                    let padding = ' '.repeat(padLength);
+                    
+                    // Surgically rebuild just the key and equals sign
+                    return `${leadingSpaces}${keyStr}${padding}= `;
+                });
+            }
+
+            newText += entryRaw;
+            lastEnd = entry.end;
+        });
+        
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
+        logMessage(`Aligned field values to ${alignAmount} characters!`);
+    }
+
     
     function putBlankLine() {
         let rawText = inputEl.value;
