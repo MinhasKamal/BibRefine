@@ -232,10 +232,10 @@
         <button class="action-btn" onclick="putBlankLine()">2. Put Blank Line Between Entries</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces</button>
+        <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces in Field Values</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">4. Lowercase Types & Fields</button>
+        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">4. Lowercase Entry Types & Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -243,14 +243,14 @@
     <!-- Field Operations Group -->
     <div class="group-label">Field Operations</div>
     <div class="control-group">
-        <label for="field-order">Field Order:</label>
-        <input type="text" id="field-order" value="author,title,journal,booktitle,year,month,day,volume,number,pages,organization,publisher,shorttitle,doi">
-        <button class="action-btn" onclick="reorderFields()">5. Reorder Fields</button>
-    </div>
-    <div class="control-group">
         <label for="cap-fields">Fields to be Capitalized:</label>
         <input type="text" id="cap-fields" value="title,journal,booktitle">
-        <button class="action-btn" onclick="capitalizeFields()" title="E.g., `down git` -> `Down Git`">6. Capitalize Fields</button>
+        <button class="action-btn" onclick="capitalizeFields()" title="E.g., `down git` -> `Down Git`">5. Capitalize Field Values</button>
+    </div>
+    <div class="control-group">
+        <label for="field-order">Field Order:</label>
+        <input type="text" id="field-order" value="author,title,journal,booktitle,year,month,day,volume,number,pages,organization,publisher,shorttitle,doi">
+        <button class="action-btn" onclick="reorderFields()">6. Reorder Fields</button>
     </div>
     <div class="control-group">
         <label for="keep-fields">Fields to be Kept:</label>
@@ -671,14 +671,33 @@ As there are no servers, your data never leaves your device. So, it is private, 
         return result;
     }
 
-    // --- Format Commands ---
+    // --- Formatting & Cleaning ---
 
     function indentEntries() {
         const rawText = inputEl.value;
         const entries = parseBibtex(rawText);
         if(entries.length === 0) { logMessage("No valid entries found."); return; }
+        
+        const indentStr = document.getElementById('indentation').value || '  ';
+        let newText = "";
+        let lastEnd = 0;
 
-        let newText = applyModifiedEntries(rawText, entries);
+        entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+
+            for (let k in entry.fields) {
+                // 'm' flag allows ^ to match the start of any line inside the entry string
+                // Captures leading spaces/tabs and replaces them entirely with the exact indent string
+                let regex = new RegExp(`^[ \\t]*(${k}\\s*=)`, 'im');
+                entryRaw = entryRaw.replace(regex, `${indentStr}$1`);
+            }
+
+            newText += entryRaw;
+            lastEnd = entry.end;
+        });
+        
+        newText += rawText.substring(lastEnd);
         setEditorText(newText);
         logMessage("Indented successfully!");
     }
@@ -701,19 +720,33 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const entries = parseBibtex(rawText);
         if(entries.length === 0) { logMessage("No valid entries found."); return; }
         
+        let newText = "";
+        let lastEnd = 0;
+
         entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+
             for (let k in entry.fields) {
                 let val = entry.fields[k];
-                val = val.replace(/[ \t]{2,}/g, ' ');
-                val = val.replace(/^\{\s+/, '{');
-                val = val.replace(/\s+\}$/, '}');
-                val = val.replace(/^"\s+/, '"');
-                val = val.replace(/\s+"$/, '"');
-                entry.fields[k] = val;
+                // Clean up spaces only inside the value
+                let newVal = val.replace(/[ \t]{2,}/g, ' ')
+                                .replace(/^\{\s+/, '{')
+                                .replace(/\s+\}$/, '}')
+                                .replace(/^"\s+/, '"')
+                                .replace(/\s+"$/, '"');
+
+                // Surgically replace the old value with the clean value, leaving the key and `=` spacing untouched
+                let regex = new RegExp(`(${k}\\s*=\\s*)(${escapeRegExp(val)})`, 'i');
+                entryRaw = entryRaw.replace(regex, `$1${newVal}`);
             }
+
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
         logMessage("Removed extra spaces within fields!");
     }
 
@@ -722,156 +755,206 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const entries = parseBibtex(rawText);
         if(entries.length === 0) { logMessage("No valid entries found."); return; }
         
+        let newText = "";
+        let lastEnd = 0;
+
         entries.forEach(entry => {
-            entry.type = entry.type.toLowerCase();
-            const lowerFields = {};
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+
+            // 1. Lowercase the type (e.g., @ARTICLE{ -> @article{)
+            // It matches the @ symbol, the type string, and the following space or brace
+            let typeRegex = new RegExp(`^(@)(${entry.type})([\\s{])`, 'i');
+            entryRaw = entryRaw.replace(typeRegex, (match, at, typeStr, brace) => {
+                return at + typeStr.toLowerCase() + brace;
+            });
+
+            // 2. Lowercase the fields
             for (let k in entry.fields) {
-                lowerFields[k.toLowerCase()] = entry.fields[k];
+                let val = entry.fields[k];
+                // Match the start of the line, optional spaces, the key, and the `=` part
+                let fieldRegex = new RegExp(`^([ \\t]*)(${k})(\\s*=\\s*${escapeRegExp(val)})`, 'im');
+                entryRaw = entryRaw.replace(fieldRegex, (match, spaces, keyStr, suffix) => {
+                    return spaces + keyStr.toLowerCase() + suffix;
+                });
             }
-            entry.fields = lowerFields;
+
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
         logMessage("Lowercased types and field names!");
     }
+
+    // --- Field Operations ---
+
+    const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     function reorderFields() {
         const rawText = inputEl.value;
         const order = document.getElementById('field-order').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
+        if (entries.length === 0) { logMessage("No valid entries found."); return; }
         
-        if (entries.length === 0) { 
-            logMessage("No valid entries found."); 
-            return; 
-        }
+        let newText = "";
+        let lastEnd = 0;
         
         entries.forEach(entry => {
-            const newFields = {};
-            order.forEach(f => {
-                let actualKey = getFieldKey(entry, f);
-                if(actualKey) {
-                    newFields[actualKey] = entry.fields[actualKey];
-                    delete entry.fields[actualKey];
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+            
+            let blocks = {};
+            let currentKeys = Object.keys(entry.fields);
+            
+            // Extract each field exactly as it was formatted
+            currentKeys.forEach(k => {
+                let val = entry.fields[k];
+                let regex = new RegExp(`([ \\t]*${k}\\s*=\\s*${escapeRegExp(val)},?[ \\t]*\\r?\\n?)`, 'i');
+                let match = entryRaw.match(regex);
+                if (match) {
+                    blocks[k] = match[1];
+                    entryRaw = entryRaw.replace(regex, `___PLACEHOLDER_${k}___`);
                 }
             });
-            for(let key in entry.fields) {
-                newFields[key] = entry.fields[key];
+            
+            let orderedBlocks = [];
+            order.forEach(f => {
+                let actualKey = getFieldKey(entry, f);
+                if (actualKey && blocks[actualKey]) {
+                    orderedBlocks.push(blocks[actualKey]);
+                    delete blocks[actualKey];
+                }
+            });
+            
+            currentKeys.forEach(k => {
+                if (blocks[k]) {
+                    orderedBlocks.push(blocks[k]);
+                }
+            });
+            
+            // Normalize commas for reordered blocks so we don't break parsing
+            for(let i = 0; i < orderedBlocks.length; i++) {
+                let b = orderedBlocks[i];
+                if (i < orderedBlocks.length - 1) {
+                    if (!/,([ \t]*\r?\n?)$/.test(b)) {
+                       b = b.replace(/([ \t]*\r?\n?)$/, ',\$1');
+                    }
+                } else {
+                    b = b.replace(/,([ \t]*\r?\n?)$/, '\$1'); // Remove trailing comma from last item
+                }
+                orderedBlocks[i] = b;
             }
-            entry.fields = newFields;
+            
+            let combinedFields = orderedBlocks.join('');
+            
+            // Inject combined fields into the first placeholder, delete the rest
+            let isFirst = true;
+            currentKeys.forEach(k => {
+                let placeholder = `___PLACEHOLDER_${k}___`;
+                if (entryRaw.includes(placeholder)) {
+                    if (isFirst) {
+                        entryRaw = entryRaw.replace(placeholder, combinedFields);
+                        isFirst = false;
+                    } else {
+                        entryRaw = entryRaw.replace(placeholder, '');
+                    }
+                }
+            });
+            
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
-        logMessage("Reordered fields based on preferences!");
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
+        logMessage("Reordered fields!");
     }
 
     function capitalizeFields() {
         const rawText = inputEl.value;
         const capFields = document.getElementById('cap-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
+        if (entries.length === 0) { logMessage("No valid entries found."); return; }
         
-        if (entries.length === 0) { 
-            logMessage("No valid entries found."); 
-            return; 
-        }
+        const ignoreWords = ['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'so', 'yet', 'as', 'at', 'by', 'down', 'from', 'in', 'into', 'near', 'of', 'off', 'on', 'out', 'over', 'past', 'to', 'up', 'upon', 'with', 'via', 'vs', 'v'];
         
-        // Strict APA/Chicago minor words list (3 letters or fewer)
-        // Words of 4+ letters (With, From, Into, Over) are intentionally omitted so they get capitalized!
-        const minorWords = new Set([
-            'a', 'an', 'the', // Articles
-            'and', 'as', 'but', 'for', 'if', 'nor', 'or', 'so', 'yet', // Short Conjunctions
-            'at', 'by', 'in', 'of', 'off', 'on', 'per', 'to', 'up', 'via', // Short Prepositions
-            'v', 'vs' // Legal/versus
-        ]);
+        let newText = "";
+        let lastEnd = 0;
         
         entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+            
             capFields.forEach(f => {
                 let actualKey = getFieldKey(entry, f);
                 if(actualKey) {
                     let val = entry.fields[actualKey];
                     
-                    val = val.replace(/\b([a-zA-Z]+)\b/g, (match, word, offset, fullString) => {
+                    let newVal = val.replace(/\b([a-zA-Z]+)\b/g, (match, word, offset, fullString) => {
+                        if (offset > 0 && /['’`]/.test(fullString.charAt(offset - 1))) return word.toLowerCase();
+                        let beforeWord = fullString.substring(0, offset).trim();
+                        let lastCharBefore = fullString.charAt(offset - 1); 
+                        let lastNonSpaceBefore = beforeWord.slice(-1);
+                        if (lastCharBefore === '\\') return word;
+                        let afterWord = fullString.substring(offset + word.length).trim();
+                        let isLastWord = (afterWord === '' || afterWord === '}' || afterWord === '"');
+                        let isStartOfPhrase = (offset === 0 || beforeWord === '' || beforeWord === '{' || beforeWord === '"' || /[:.?!]/.test(lastNonSpaceBefore) || beforeWord.endsWith('--'));
+                        if (word === word.toUpperCase() && word.length > 1) return word;
+                        if (/[a-z][A-Z]/.test(word)) return word;
                         let lowerWord = word.toLowerCase();
-                        
-                        // 1. Handle common apostrophe suffixes (e.g., Dobb's, wasn't)
-                        const commonSuffixes = new Set(['s', 't', 're', 've', 'm', 'll', 'd']);
-                        if (offset > 0 && /['’`]/.test(fullString.charAt(offset - 1))) {
-                            // If it's a suffix, lowercase it. If it's a name (e.g., O'Neill), capitalize it.
-                            if (commonSuffixes.has(lowerWord)) {
-                                return lowerWord;
-                            }
-                            return lowerWord.charAt(0).toUpperCase() + lowerWord.slice(1);
-                        }
-                        
-                        let beforeWord = fullString.substring(0, offset);
-                        let afterWord = fullString.substring(offset + word.length);
-                        
-                        // 2. Preserve LaTeX formatting commands (e.g., \textbf, \alpha)
-                        if (beforeWord.trim().slice(-1) === '\\') {
-                            return word;
-                        }
-                        
-                        // 3. Preserve ALLCAPS (e.g., KITTI, SVM) and camelCase (e.g., iPhone)
-                        if (word === word.toUpperCase() && word.length > 1) {
-                            return word;
-                        }
-                        if (/[a-z][A-Z]/.test(word)) {
-                            return word;
-                        }
-                        
-                        // 4. Grammar boundaries
-                        // A word is "first" or "last" if there are no other letters before/after it
-                        let isFirstWord = !(/[a-zA-Z]/.test(beforeWord));
-                        let isLastWord = !(/[a-zA-Z]/.test(afterWord));
-                        
-                        // Start of a subtitle (follows :, ?, !, em-dash, or en-dash + optional spaces/braces)
-                        let isSubtitleStart = /[:?!—]\s*[^\w]*$/.test(beforeWord) || /--\s*[^\w]*$/.test(beforeWord);
-                        
-                        // 5. Apply capitalization rules
-                        if (isFirstWord || isLastWord || isSubtitleStart) {
-                            // ALWAYS capitalize first words, last words, and subtitle starts
-                            return lowerWord.charAt(0).toUpperCase() + lowerWord.slice(1);
-                        }
-                        
-                        if (minorWords.has(lowerWord)) {
-                            // Lowercase 3-letter-or-fewer minor words
-                            return lowerWord; 
-                        }
-                        
-                        // 6. Default: Capitalize major words and 4+ letter words
+                        if (!isStartOfPhrase && !isLastWord && ignoreWords.includes(lowerWord)) return lowerWord; 
                         return lowerWord.charAt(0).toUpperCase() + lowerWord.slice(1);
                     });
                     
-                    entry.fields[actualKey] = val;
+                    // Only replace the target value assigned to this specific key
+                    let regex = new RegExp(`(${actualKey}\\s*=\\s*)(${escapeRegExp(val)})`, 'i');
+                    entryRaw = entryRaw.replace(regex, `$1${newVal}`);
                 }
             });
+            
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
-        logMessage("Applied Title Case to specified fields!");
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
+        logMessage("Applied Title Case!");
     }
-
     
     function keepFields() {
         const rawText = inputEl.value;
         const fieldsToKeep = document.getElementById('keep-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
+        if (entries.length === 0) { logMessage("No valid entries found."); return; }
         
-        if (entries.length === 0) { 
-            logMessage("No valid entries found."); 
-            return; 
-        }
+        let newText = "";
+        let lastEnd = 0;
         
         entries.forEach(entry => {
-            const currentKeys = Object.keys(entry.fields);
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+            
+            let currentKeys = Object.keys(entry.fields);
             
             currentKeys.forEach(k => {
                 if (!fieldsToKeep.includes(k.toLowerCase())) {
-                    delete entry.fields[k];
+                    let val = entry.fields[k];
+                    let regex = new RegExp(`[ \\t]*${k}\\s*=\\s*${escapeRegExp(val)},?[ \\t]*\\r?\\n?`, 'i');
+                    entryRaw = entryRaw.replace(regex, '');
                 }
             });
+            
+            // Clean up possible trailing commas from the LAST remaining field
+            entryRaw = entryRaw.replace(/,[ \t]*(\r?\n?[ \t]*})$/, '\$1');
+            
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
         logMessage(`Removed fields except: ${fieldsToKeep.join(', ')}`);
     }
 
@@ -879,52 +962,77 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const rawText = inputEl.value;
         const fieldsToRemove = document.getElementById('remove-fields').value.split(/[ ,;]+/).map(s => s.trim().toLowerCase());
         const entries = parseBibtex(rawText);
+        if (entries.length === 0) { logMessage("No valid entries found."); return; }
         
-        if (entries.length === 0) { 
-            logMessage("No valid entries found."); 
-            return; 
-        }
+        let newText = "";
+        let lastEnd = 0;
         
         entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+            
             fieldsToRemove.forEach(f => {
                 let actualKey = getFieldKey(entry, f);
-                if(actualKey) delete entry.fields[actualKey];
+                if(actualKey) {
+                    let val = entry.fields[actualKey];
+                    // Strip the field entirely while keeping surrounding lines intact
+                    let regex = new RegExp(`[ \\t]*${actualKey}\\s*=\\s*${escapeRegExp(val)},?[ \\t]*\\r?\\n?`, 'i');
+                    entryRaw = entryRaw.replace(regex, '');
+                }
             });
+            
+            // Clean up possible trailing commas from the LAST remaining field
+            entryRaw = entryRaw.replace(/,[ \t]*(\r?\n?[ \t]*})$/, '\$1');
+            
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
+        newText += rawText.substring(lastEnd);
+        setEditorText(newText);
         logMessage(`Removed fields: ${fieldsToRemove.join(', ')}`);
     }
-    
+
     function removeEmptyFields() {
         const rawText = inputEl.value;
         const entries = parseBibtex(rawText);
         
+        if (entries.length === 0) { logMessage("No valid entries found."); return; }
+        
         if (entries.length === 0) { 
             logMessage("No valid entries found."); 
             return; 
         }
         
+        let newText = "";
+        let lastEnd = 0;
         let removedCount = 0;
         
         entries.forEach(entry => {
-            // Check every field in the entry
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+            
             for (let k in entry.fields) {
                 let val = entry.fields[k];
-                
-                // Strip spaces, tabs, newlines, quotes, and braces to see if anything is left
                 let cleanVal = val.replace(/[{}"'\s]/g, '');
                 
-                // If it's completely empty, delete the field from the object
                 if (cleanVal === '') {
-                    delete entry.fields[k];
+                    let regex = new RegExp(`[ \\t]*${k}\\s*=\\s*${escapeRegExp(val)},?[ \\t]*\\r?\\n?`, 'i');
+                    entryRaw = entryRaw.replace(regex, '');
                     removedCount++;
                 }
             }
+            
+            entryRaw = entryRaw.replace(/,[ \t]*(\r?\n?[ \t]*})$/, '\$1');
+            
+            newText += entryRaw;
+            lastEnd = entry.end;
         });
         
+        newText += rawText.substring(lastEnd);
+        
         if (removedCount > 0) {
-            setEditorText(applyModifiedEntries(rawText, entries));
+            setEditorText(newText);
             logMessage(`Removed ${removedCount} empty field(s)!`);
         } else {
             logMessage("No empty fields found.");
@@ -932,7 +1040,7 @@ As there are no servers, your data never leaves your device. So, it is private, 
     }
 
 
-    // --- Complex Author Parsing & Key Generation ---
+    // --- Utilities ---
     
     function getFirstAuthorLastName(authorStr) {
         let clean = authorStr.replace(/\{|\}/g, '').trim();
@@ -954,43 +1062,70 @@ As there are no servers, your data never leaves your device. So, it is private, 
         const entries = parseBibtex(rawText);
         const overrideKeys = document.getElementById('override-keys').checked;
         
-        let generatedKeyCount = 0;
+        let newText = "";
+        let lastEnd = 0;
+        let generatedCount = 0;
+
         entries.forEach(entry => {
+            newText += rawText.substring(lastEnd, entry.start);
+            let entryRaw = rawText.substring(entry.start, entry.end);
+
+            // Skip generation if a valid key already exists and we are not overriding
             if (!overrideKeys && entry.key && entry.key.trim() !== '') {
+                newText += entryRaw;
+                lastEnd = entry.end;
                 return;
             }
 
+            // Extract metadata to build the key
             let person = getFieldValue(entry, 'author');
             let year = getFieldValue(entry, 'year');
             let shorttitle = getFieldValue(entry, 'shorttitle');
             let title = getFieldValue(entry, 'title');
             
-            let lastName = ''
+            let lastName = '';
             if(person) {
                 lastName = getFirstAuthorLastName(person);
             }
-            let cleanYear = ''
+            let cleanYear = '';
             if(year) {
                 cleanYear = year.replace(/[^0-9]/g, '');
             }
-            let titlePart = ''
+            let titlePart = '';
             if (shorttitle) {
                 titlePart = shorttitle.replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/).slice(0, 2).join('');
             } else if (title) {
                 titlePart = title.replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/).slice(0, 2).join('');
             }
 
-            entry.key = lastName + cleanYear + titlePart;
-            generatedKeyCount ++;
+            let newKey = lastName + cleanYear + titlePart;
+            
+            // Surgically inject or replace the key
+            if (entry.key === "") {
+                // If there was no key, find the opening brace and insert the new key and a comma
+                let keyRegex = new RegExp(`^(@${entry.type}\\s*\\{)`, 'i');
+                entryRaw = entryRaw.replace(keyRegex, `$1${newKey},`);
+            } else {
+                // If there was an old key, replace exactly the old key text, preserving surrounding spaces
+                let keyRegex = new RegExp(`^(@${entry.type}\\s*\\{)(\\s*)${escapeRegExp(entry.key)}(\\s*,?)`, 'i');
+                entryRaw = entryRaw.replace(keyRegex, `$1$2${newKey},`);
+            }
+
+            newText += entryRaw;
+            lastEnd = entry.end;
+            generatedCount++;
         });
         
-        setEditorText(applyModifiedEntries(rawText, entries));
+        newText += rawText.substring(lastEnd);
+        
+        setEditorText(newText);
         if (!overrideKeys) {
-            logMessage(`Generated ${generatedKeyCount} (missing) keys!`);
+            logMessage(`Generated ${generatedCount} missing keys!`);
         } else {
-            logMessage(`Regenerated ${generatedKeyCount} (all) keys!`);
+            logMessage(`Regenerated all ${generatedCount} keys!`);
         }
     }
+
 
     // --- Fuzzy Duplicate Checking Algorithms ---
 
@@ -1098,6 +1233,8 @@ As there are no servers, your data never leaves your device. So, it is private, 
         }
         
         let alertMsg = [];
+        alertMsg.push(`Total ${entries.length} entries.`)
+        
         if (exactDups.length > 0) {
             alertMsg.push(`# Exact Duplicate Keys:\n- ` + exactDups.join('\n- '));
         }
