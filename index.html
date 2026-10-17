@@ -164,7 +164,6 @@
         padding: 1rem;
         overflow-y: auto;
         flex-shrink: 0;
-        transition: width 0.3s, padding 0.3s;
         display: none; /* Hidden by default */
     }
     #right-sidebar.show {
@@ -239,7 +238,15 @@
         <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces in Field Values</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="putBlankLine()">4. Put Blank Line Between Entries</button>
+        <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+            <label>
+                <input type="radio" name="spacing-mode" value="put" checked> Put
+            </label>
+            <label>
+                <input type="radio" name="spacing-mode" value="remove"> Remove
+            </label>
+        </div>
+        <button class="action-btn" onclick="adjustBlankLine()" title="Puts or removes blank lines between entries">4. Adjust Blank Line Between Entries</button>
     </div>
     <div class="control-group">
         <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">5. Lowercase Entry Types & Fields</button>
@@ -772,20 +779,6 @@ As there are no servers, your data never leaves your device. So, it is private, 
         logMessage(`Aligned field values to ${alignAmount} characters!`);
     }
 
-    
-    function putBlankLine() {
-        let rawText = inputEl.value;
-
-        // This regex finds a closing brace `}` followed by any whitespace (including newlines)
-        // and then an `@` symbol. It replaces that gap with exactly two newlines.
-        // The `g` flag ensures it does this for every entry, and `m` helps with multiline matching.
-        const newText = rawText.replace(/}(\s*?)@/gm, '}\n\n@');
-
-        setEditorText(newText);
-        logMessage("1 blank line inserted!");
-    }
-
-    
     function removeExtraSpaces() {
         const rawText = inputEl.value;
         const entries = parseBibtex(rawText);
@@ -801,7 +794,8 @@ As there are no servers, your data never leaves your device. So, it is private, 
             for (let k in entry.fields) {
                 let val = entry.fields[k];
                 // Clean up spaces only inside the value
-                let newVal = val.replace(/[ \t]{2,}/g, ' ')
+                let newVal = val.replace(/[\t\n]/g, ' ')
+                                .replace(/[ ]{2,}/g, ' ')
                                 .replace(/^\{\s+/, '{')
                                 .replace(/\s+\}$/, '}')
                                 .replace(/^"\s+/, '"')
@@ -819,6 +813,22 @@ As there are no servers, your data never leaves your device. So, it is private, 
         newText += rawText.substring(lastEnd);
         setEditorText(newText);
         logMessage("Removed extra spaces within fields!");
+    }
+    
+    function adjustBlankLine() {
+        let rawText = inputEl.value;
+        const mode = document.querySelector('input[name="spacing-mode"]:checked').value;
+        
+        let blankLine = '\n';
+        if (mode === 'put') blankLine = '\n\n';
+
+        // This regex finds a closing brace `}` followed by any whitespace (including newlines)
+        // and then an `@` symbol. It replaces that gap with exactly two newlines.
+        // The `g` flag ensures it does this for every entry, and `m` helps with multiline matching.
+        const newText = rawText.replace(/}(\s*?)@/gm, `}${blankLine}@`);
+
+        setEditorText(newText);
+        logMessage("1 blank line inserted!");
     }
 
     function lowercaseTypesAndFields() {
