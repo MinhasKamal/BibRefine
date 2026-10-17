@@ -228,7 +228,7 @@
         <button class="action-btn" onclick="indentEntries()" title="Indents with above amount">1. Indent Fields</button>
     </div>
     <div class="control-group">
-        <div style="margin-bottom: 5px;" title="Put 1 if you don't want to align">
+        <div title="Put 1 if you don't want to align">
             <label for="align-amount">Alignment: </label>
             <input type="number" id="align-amount" value="15" min="1" max="50">
         </div>
@@ -238,7 +238,7 @@
         <button class="action-btn" onclick="removeExtraSpaces()" title="E.g., `title =  { Trojan Cockroach }` -> `title = {Trojan Cockroach}`">3. Remove Extra Spaces in Field Values</button>
     </div>
     <div class="control-group">
-        <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+        <div>
             <label>
                 <input type="radio" name="spacing-mode" value="put" checked> Put
             </label>
@@ -249,7 +249,15 @@
         <button class="action-btn" onclick="adjustBlankLine()" title="Puts or removes blank lines between entries">4. Adjust Blank Line Between Entries</button>
     </div>
     <div class="control-group">
-        <button class="action-btn" onclick="lowercaseTypesAndFields()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">5. Lowercase Entry Types & Fields</button>
+        <div>
+            <label>
+                <input type="radio" name="casing-mode" value="lower" checked> lowercase
+            </label>
+            <label>
+                <input type="radio" name="casing-mode" value="upper"> UPPERCASE
+            </label>
+        </div>
+        <button class="action-btn" onclick="adjustCase()" title="E.g., `@ARTICLE` -> `@article`, `Title=` -> `title=`">5. Change Case for Entry Types & Fields</button>
     </div>
 
     <hr class="sidebar-divider">
@@ -831,42 +839,71 @@ As there are no servers, your data never leaves your device. So, it is private, 
         logMessage("1 blank line inserted!");
     }
 
-    function lowercaseTypesAndFields() {
+    function adjustCase() {
         const rawText = inputEl.value;
         const entries = parseBibtex(rawText);
         if(entries.length === 0) { logMessage("No valid entries found."); return; }
         
+        const mode = document.querySelector('input[name="casing-mode"]:checked').value;
+        
         let newText = "";
         let lastEnd = 0;
 
-        entries.forEach(entry => {
-            newText += rawText.substring(lastEnd, entry.start);
-            let entryRaw = rawText.substring(entry.start, entry.end);
+        if (mode === 'lower') {
+            entries.forEach(entry => {
+                newText += rawText.substring(lastEnd, entry.start);
+                let entryRaw = rawText.substring(entry.start, entry.end);
 
-            // 1. Lowercase the type (e.g., @ARTICLE{ -> @article{)
-            // It matches the @ symbol, the type string, and the following space or brace
-            let typeRegex = new RegExp(`^(@)(${entry.type})([\\s{])`, 'i');
-            entryRaw = entryRaw.replace(typeRegex, (match, at, typeStr, brace) => {
-                return at + typeStr.toLowerCase() + brace;
+                // 1. Lowercase the type (e.g., @ARTICLE{ -> @article{)
+                // It matches the @ symbol, the type string, and the following space or brace
+                let typeRegex = new RegExp(`^(@)(${entry.type})([\\s{])`, 'i');
+                entryRaw = entryRaw.replace(typeRegex, (match, at, typeStr, brace) => {
+                    return at + typeStr.toLowerCase() + brace;
+                });
+
+                // 2. Lowercase the fields
+                for (let k in entry.fields) {
+                    let val = entry.fields[k];
+                    // Match the start of the line, optional spaces, the key, and the `=` part
+                    let fieldRegex = new RegExp(`^([ \\t]*)(${k})(\\s*=\\s*${escapeRegExp(val)})`, 'im');
+                    entryRaw = entryRaw.replace(fieldRegex, (match, spaces, keyStr, suffix) => {
+                        return spaces + keyStr.toLowerCase() + suffix;
+                    });
+                }
+
+                newText += entryRaw;
+                lastEnd = entry.end;
             });
 
-            // 2. Lowercase the fields
-            for (let k in entry.fields) {
-                let val = entry.fields[k];
-                // Match the start of the line, optional spaces, the key, and the `=` part
-                let fieldRegex = new RegExp(`^([ \\t]*)(${k})(\\s*=\\s*${escapeRegExp(val)})`, 'im');
-                entryRaw = entryRaw.replace(fieldRegex, (match, spaces, keyStr, suffix) => {
-                    return spaces + keyStr.toLowerCase() + suffix;
-                });
-            }
+            newText += rawText.substring(lastEnd);
+            setEditorText(newText);
+            logMessage("Lowercased types and field names!");
+        } else {
+            entries.forEach(entry => {
+                newText += rawText.substring(lastEnd, entry.start);
+                let entryRaw = rawText.substring(entry.start, entry.end);
 
-            newText += entryRaw;
-            lastEnd = entry.end;
-        });
-        
-        newText += rawText.substring(lastEnd);
-        setEditorText(newText);
-        logMessage("Lowercased types and field names!");
+                let typeRegex = new RegExp(`^(@)(${entry.type})([\\s{])`, 'i');
+                entryRaw = entryRaw.replace(typeRegex, (match, at, typeStr, brace) => {
+                    return at + typeStr.toUpperCase() + brace;
+                });
+
+                for (let k in entry.fields) {
+                    let val = entry.fields[k];
+                    let fieldRegex = new RegExp(`^([ \\t]*)(${k})(\\s*=\\s*${escapeRegExp(val)})`, 'im');
+                    entryRaw = entryRaw.replace(fieldRegex, (match, spaces, keyStr, suffix) => {
+                        return spaces + keyStr.toUpperCase() + suffix;
+                    });
+                }
+
+                newText += entryRaw;
+                lastEnd = entry.end;
+            });
+
+            newText += rawText.substring(lastEnd);
+            setEditorText(newText);
+            logMessage("Uppercased types and field names!");
+        }
     }
 
     // --- Field Operations ---
